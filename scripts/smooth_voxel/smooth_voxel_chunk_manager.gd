@@ -74,26 +74,32 @@ func world_to_chunk_position(world_position: Vector3):
 	)
 
 func modify_voxel_density(hit_point: Vector3, radius: float, strength: float):
-	var affected_chunks = []
+	var affected_chunks = {}
+	var radius_squared = radius * radius
 	
-	for x in range(-radius, radius + 1):
-		for y in range(-radius, radius + 1):
-			for z in range(-radius, radius + 1):
-				var voxel_pos = Vector3(
-					floor(hit_point.x) + x,
-					floor(hit_point.y) + y,
-					floor(hit_point.z) + z
-				)
-				var chunk_pos = world_to_chunk_position(voxel_pos)
+	var min_chunk = world_to_chunk_position(hit_point - Vector3.ONE * radius)
+	var max_chunk = world_to_chunk_position(hit_point + Vector3.ONE * radius)
+	
+	for cx in range(min_chunk.x, max_chunk.x + 1):
+		for cy in range(min_chunk.y, max_chunk.y + 1):
+			for cz in range(min_chunk.z, max_chunk.z + 1):
+				var chunk_pos = Vector3(cx, cy, cz)
 				if chunks.has(chunk_pos):
 					var chunk = chunks[chunk_pos]
-					var local_pos = voxel_pos - (chunk_pos * chunk_size)
-					var distance = hit_point.distance_to(voxel_pos)
-					if distance <= radius:
-						var current_density = chunk.get_voxel_data().get_density(local_pos.x, local_pos.y, local_pos.z)
-						var new_density = current_density - strength
-						chunk.get_voxel_data().set_density(local_pos.x, local_pos.y, local_pos.z, new_density)
-						affected_chunks.append(chunk_pos)
+					var chunk_origin = chunk_pos * chunk_size
+					var local_min = (hit_point - chunk_origin - Vector3.ONE * radius).ceil()
+					var local_max = (hit_point - chunk_origin + Vector3.ONE * radius).floor()
+					
+					for x in range(max(0, local_min.x), min(chunk_size, local_max.x + 1)):
+						for y in range(max(0, local_min.y), min(chunk_size, local_max.y + 1)):
+							for z in range(max(0, local_min.z), min(chunk_size, local_max.z + 1)):
+								var voxel_pos = chunk_origin + Vector3(x, y, z)
+								var distance_squared = hit_point.distance_squared_to(voxel_pos)
+								if distance_squared <= radius_squared:
+									var current_density = chunk.get_voxel_data().get_density(x, y, z)
+									var new_density = current_density - strength
+									chunk.get_voxel_data().set_density(x, y, z, new_density)
+									affected_chunks[chunk_pos] = true
 	
 	for chunk_pos in affected_chunks:
 		update_chunk_and_neighbors(chunk_pos)
