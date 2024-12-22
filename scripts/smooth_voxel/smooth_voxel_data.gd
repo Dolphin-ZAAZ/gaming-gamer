@@ -2,8 +2,8 @@ extends Resource
 
 class_name SmoothVoxelData
 
-var CHUNK_SIZE: int = 16
-var densities: Array = []
+var CHUNK_SIZE: int = 4
+var densities: PackedFloat32Array = PackedFloat32Array()
 var NOISE_SCALE: float = 0.1
 
 func _init(chunk_position: Vector3, size: int = 16):
@@ -11,21 +11,15 @@ func _init(chunk_position: Vector3, size: int = 16):
 	_generate_cube(chunk_position)
 
 func _generate_cube(chunk_position: Vector3):
-	densities.resize((CHUNK_SIZE + 1) * (CHUNK_SIZE + 1) * (CHUNK_SIZE + 1))
+	var total_size = (CHUNK_SIZE + 1) * (CHUNK_SIZE + 1) * (CHUNK_SIZE + 1)
+	densities.resize(total_size)
 	
-	for x in range(CHUNK_SIZE + 1):
-		for y in range(CHUNK_SIZE + 1):
-			for z in range(CHUNK_SIZE + 1):
-				var density: float
-				
-				# if x == 0 or y == 0 or z == 0 or x == CHUNK_SIZE-1 or y == CHUNK_SIZE-1 or z == CHUNK_SIZE-1:
-				# 	# Outer layer: set to non-solid (negative density)
-				# 	density = -1.0
-				# else:
-				# 	# Interior: set to solid (positive density)
-				density = 1.0
-				
-				set_density(x, y, z, density)
+	# Pre-calculate the density value
+	var density: float = 1.0
+	
+	# Use direct array access for faster writing
+	for i in range(total_size):
+		densities[i] = density
 
 func get_density(x: int, y: int, z: int) -> float:
 	var index = x + y * (CHUNK_SIZE + 1) + z * (CHUNK_SIZE + 1) * (CHUNK_SIZE + 1)
@@ -34,3 +28,13 @@ func get_density(x: int, y: int, z: int) -> float:
 func set_density(x: int, y: int, z: int, density: float) -> void:
 	var index = x + y * (CHUNK_SIZE + 1) + z * (CHUNK_SIZE + 1) * (CHUNK_SIZE + 1)
 	densities[index] = density
+
+# Add these new methods
+func get_density_data() -> PackedFloat32Array:
+	return densities
+
+func set_density_data(new_densities: PackedFloat32Array) -> void:
+	for i in range(new_densities.size()):
+		if new_densities[i] < 1:
+			print("Density ", i, ": ", new_densities[i])
+	densities = new_densities

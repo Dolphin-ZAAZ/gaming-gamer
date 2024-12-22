@@ -313,36 +313,28 @@ func interpolate(p1: Vector3, p2: Vector3, val_p1: float, val_p2: float) -> Vect
 		return p1
 	var mu = (0.0 - val_p1) / (val_p2 - val_p1)
 	return p1 + mu * (p2 - p1)
-
-func generate_collider(voxel_data: SmoothVoxelData) -> StaticBody3D:
-	var static_body = StaticBody3D.new()
-
-	# Create a ConcavePolygonShape to represent the complex shape of the mesh
-	var shape = ConcavePolygonShape3D.new()
-	var collision_data = generate_collision_data(voxel_data)
-
-	if collision_data.size() > 0:
-		shape.data = collision_data
-
-	var collision_shape = CollisionShape3D.new()
-	collision_shape.shape = shape
-	static_body.add_child(collision_shape)
-	return static_body
-
+	
 func generate_collision_data(voxel_data: SmoothVoxelData) -> PackedVector3Array:
 	var collision_vertices = PackedVector3Array()
+	collision_vertices.resize(voxel_data.CHUNK_SIZE * voxel_data.CHUNK_SIZE * voxel_data.CHUNK_SIZE * 6)  # Pre-allocate space
+	var vertex_count = 0
 	
+	var cube_corners = PackedFloat32Array()
+	cube_corners.resize(8)
+	
+	var edge_vertices = PackedVector3Array()
+	edge_vertices.resize(12)
+
 	for x in range(voxel_data.CHUNK_SIZE - 1):
 		for y in range(voxel_data.CHUNK_SIZE - 1):
 			for z in range(voxel_data.CHUNK_SIZE - 1):
 				var cube_index = 0
-				var cube_corners = []
 
 				# Evaluate all corner densities for current voxel
 				for i in range(8):
 					var corner = Vector3(x, y, z) + edge_vertex_offsets[i]
 					var density_value = voxel_data.get_density(int(corner.x), int(corner.y), int(corner.z))
-					cube_corners.append(density_value)
+					cube_corners[i] = density_value
 					if density_value < 0:
 						cube_index |= 1 << i
 
@@ -351,8 +343,6 @@ func generate_collision_data(voxel_data: SmoothVoxelData) -> PackedVector3Array:
 				if edge_mask == 0:
 					continue
 
-				var edge_vertices = []
-				edge_vertices.resize(12)  # Allocate space for 12 possible edges in a cube
 				for i in range(12):
 					if edge_mask & (1 << i):
 						var idx1 = EDGE_CONNECTIONS[i * 2]
@@ -361,7 +351,7 @@ func generate_collision_data(voxel_data: SmoothVoxelData) -> PackedVector3Array:
 						var vert2 = Vector3(x, y, z) + edge_vertex_offsets[idx2]
 						edge_vertices[i] = interpolate(vert1, vert2, cube_corners[idx1], cube_corners[idx2])
 					else:
-						edge_vertices[i] = Vector3()  # Default space filler for unused edges
+						edge_vertices[i] = Vector3.ZERO  # Default space filler for unused edges
 
 				# Create triangles
 				var triangle_indices = TRIANGLE_TABLE[cube_index]
@@ -373,13 +363,31 @@ func generate_collision_data(voxel_data: SmoothVoxelData) -> PackedVector3Array:
 					var v3 = edge_vertices[triangle_indices[i + 2]]
 					
 					# Add triangle
-					collision_vertices.append(v1)
-					collision_vertices.append(v2)
-					collision_vertices.append(v3)
+					collision_vertices[vertex_count] = v1
+					collision_vertices[vertex_count + 1] = v2
+					collision_vertices[vertex_count + 2] = v3
 					
 					# Add reversed triangle for back-face collision
-					collision_vertices.append(v3)
-					collision_vertices.append(v2)
-					collision_vertices.append(v1)
+					collision_vertices[vertex_count + 3] = v3
+					collision_vertices[vertex_count + 4] = v2
+					collision_vertices[vertex_count + 5] = v1
+					
+					vertex_count += 6
 
+	collision_vertices.resize(vertex_count)
 	return collision_vertices
+
+func generate_collider(voxel_data: SmoothVoxelData) -> StaticBody3D:
+	var static_body = StaticBody3D.new()
+
+	var collision_data = generate_collision_data(voxel_data)
+
+	if collision_data.size() > 0:
+		var shape = ConcavePolygonShape3D.new()
+		shape.set_faces(collision_data)
+
+		var collision_shape = CollisionShape3D.new()
+		collision_shape.shape = shape
+		static_body.add_child(collision_shape)
+
+	return static_body

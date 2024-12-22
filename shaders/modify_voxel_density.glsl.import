@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://lxtrayeglx3g"
+path="res://.godot/imported/modify_voxel_density.glsl-3bc78d45bd2c6b103870dadb97a42d50.res"
+
+[deps]
+
+source_file="res://shaders/modify_voxel_density.glsl"
+dest_files=["res://.godot/imported/modify_voxel_density.glsl-3bc78d45bd2c6b103870dadb97a42d50.res"]
+
+[params]
+

@@ -316,6 +316,7 @@ func interpolate(p1: Vector3, p2: Vector3, val_p1: float, val_p2: float) -> Vect
 	return p1 + mu * (p2 - p1)
 	
 # Generate mesh from smooth voxel data utilizing marching cubes
+
 func generate_mesh(voxel_data: SmoothVoxelData) -> Mesh:
 	var mesh = ArrayMesh.new()
 	var surface_tool = SurfaceTool.new()
@@ -324,17 +325,20 @@ func generate_mesh(voxel_data: SmoothVoxelData) -> Mesh:
 	# Disable culling to render both sides
 	surface_tool.set_material(create_double_sided_material())
 	
+	var vertices = PackedVector3Array()
+	var normals = PackedVector3Array()
+	
 	for x in range(voxel_data.CHUNK_SIZE - 1):
 		for y in range(voxel_data.CHUNK_SIZE - 1):
 			for z in range(voxel_data.CHUNK_SIZE - 1):
 				var cube_index = 0
-				var cube_corners = []
+				var cube_corners = PackedFloat32Array()
 
 				# Evaluate corners of each cube
 				for i in range(8):
 					var corner = Vector3(x, y, z) + edge_vertex_offsets[i]
 					var density_value = voxel_data.get_density(int(corner.x), int(corner.y), int(corner.z))
-					cube_corners.append(density_value)
+					cube_corners.push_back(density_value)
 					if density_value > 0: # Assuming 0 is the dividing threshold
 						cube_index |= 1 << i
 
@@ -367,17 +371,19 @@ func generate_mesh(voxel_data: SmoothVoxelData) -> Mesh:
 					# Calculate normal
 					var normal = (v2 - v1).cross(v3 - v1).normalized()
 					
-					# Add vertices with normals
-					surface_tool.set_normal(normal)
-					surface_tool.add_vertex(v1)
-					surface_tool.add_vertex(v2)
-					surface_tool.add_vertex(v3)
+					# Add vertices and normals
+					vertices.append_array([v1, v2, v3])
+					normals.append_array([normal, normal, normal])
 					
 					# Add reversed triangle for back-face
-					surface_tool.set_normal(-normal)
-					surface_tool.add_vertex(v3)
-					surface_tool.add_vertex(v2)
-					surface_tool.add_vertex(v1)
+					vertices.append_array([v3, v2, v1])
+					normals.append_array([-normal, -normal, -normal])
+
+	# Add all vertices and normals at once
+	surface_tool.set_smooth_group(true)
+	for i in range(vertices.size()):
+		surface_tool.set_normal(normals[i])
+		surface_tool.add_vertex(vertices[i])
 
 	surface_tool.index()
 	surface_tool.commit(mesh)
