@@ -2,7 +2,7 @@ extends Resource
 
 class_name SmoothVoxelData
 
-var CHUNK_SIZE: int = 4
+var CHUNK_SIZE: int = 8
 var densities: Array = []
 var NOISE_SCALE: float = 0.1
 

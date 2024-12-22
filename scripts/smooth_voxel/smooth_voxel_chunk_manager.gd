@@ -3,8 +3,8 @@ extends Node3D
 class_name SmoothVoxelChunkManager
 
 var chunks = {}
-var chunk_size = 4
-var render_distance = 5
+var chunk_size = 8
+var render_distance = 3
 
 func _ready():
 	generate_chunks_around(Vector3.ZERO)
