@@ -5,7 +5,7 @@ const JUMP_VELOCITY = 10.0
 
 var voxel_mesh: SmoothVoxelMesh
 var voxel_data: SmoothVoxelData
-var voxel_chunk: SmoothVoxelChunk
+var voxel_chunk: SmoothVoxelChunkManager
 
 # Get the gravity from the project settings to be synced with RigidDynamicBody nodes.
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
@@ -13,14 +13,11 @@ var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 @onready var camera := $Neck/Camera3D
 
 func _ready():
-	voxel_chunk = $"../SmoothVoxelChunk"
-	voxel_data = voxel_chunk.get_voxel_data()
-	voxel_mesh = voxel_chunk.update_mesh_and_collider(voxel_data)
+	voxel_chunk = $"../SmoothVoxelChunkManager"
 	
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		mine_at_position(event.position)
-		print(event.position)
 	if event is InputEventMouseButton:
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	elif event.is_action_pressed("ui_cancel"):
@@ -66,7 +63,4 @@ func mine_at_position(screen_position: Vector2):
 	
 	if result:
 		var hit_point = result.position
-		voxel_data = voxel_mesh.modify_voxel_density(hit_point, voxel_data)
-		
-		# Regenerate the mesh after modifying densities
-		var new_mesh = voxel_chunk.update_mesh_and_collider(voxel_data)
+		voxel_chunk.modify_voxel_density(hit_point, 2, 0.5) 

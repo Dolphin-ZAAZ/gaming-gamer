@@ -6,7 +6,8 @@ var CHUNK_SIZE: int = 16
 var densities: Array = []
 var NOISE_SCALE: float = 0.1
 
-func _init(chunk_position: Vector3):
+func _init(chunk_position: Vector3, size: int = 16):
+	CHUNK_SIZE = size
 	_generate_cube(chunk_position)
 
 func _generate_cube(chunk_position: Vector3):
@@ -17,12 +18,12 @@ func _generate_cube(chunk_position: Vector3):
 			for z in range(CHUNK_SIZE + 1):
 				var density: float
 				
-				if x == 0 or y == 0 or z == 0 or x == CHUNK_SIZE-1 or y == CHUNK_SIZE-1 or z == CHUNK_SIZE-1:
-					# Outer layer: set to non-solid (negative density)
-					density = -1.0
-				else:
-					# Interior: set to solid (positive density)
-					density = 1.0
+				# if x == 0 or y == 0 or z == 0 or x == CHUNK_SIZE-1 or y == CHUNK_SIZE-1 or z == CHUNK_SIZE-1:
+				# 	# Outer layer: set to non-solid (negative density)
+				# 	density = -1.0
+				# else:
+				# 	# Interior: set to solid (positive density)
+				density = 1.0
 				
 				set_density(x, y, z, density)
 

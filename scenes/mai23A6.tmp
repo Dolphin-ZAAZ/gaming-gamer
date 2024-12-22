@@ -47,7 +47,8 @@ transform = Transform3D(1.48585, 0, 0, 0, 1.48585, 0, 0, 0, 1.48585, 4.97995, 0.
 transform = Transform3D(1.48585, 0, 0, 0, 1.48585, 0, 0, 0, 1.48585, -4.18978, 0.958821, 6.80827)
 
 [node name="Player" parent="." instance=ExtResource("2_k0p0j")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0726175, 40.7702, -0.0390997)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 27.2891, 0)
 
 [node name="SmoothVoxelChunkManager" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -58.4708, 0)
 script = ExtResource("3_6ho4h")
