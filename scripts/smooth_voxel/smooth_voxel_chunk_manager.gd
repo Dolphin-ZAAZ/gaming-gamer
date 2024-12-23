@@ -8,10 +8,9 @@ var modification_queue: Array = []
 var should_exit_thread: bool = false
 
 var chunks = {}
-var chunk_size = 4
-var render_distance = 3
+var chunk_size = 16
+var render_distance = 33
 var thread_semaphore: Semaphore
-const MAX_THREADS = 3  # 3 worker threads + 1 main thread = 4 total
 
 var total_data_generation_time = 0.0
 var total_mesh_update_time = 0.0
@@ -22,9 +21,12 @@ var update_queue = []
 var update_thread: Thread
 var is_updating = false
 
+var chunks_to_generate = []
+
 func _ready():
-	generate_chunks_around(Vector3.ZERO)
 	modification_mutex = Mutex.new()
+	thread_semaphore = Semaphore.new()
+	queue_chunks_around(Vector3.ZERO)
 
 func _process(delta):
 	if Time.get_ticks_msec() - last_log_time > 3000:  # Log every 3 seconds
@@ -32,20 +34,42 @@ func _process(delta):
 
 	if not is_updating and not update_queue.is_empty():
 		_start_next_update()
+	elif not is_updating and not chunks_to_generate.is_empty():
+		generate_next_chunk()
+
 
 func log_progress():
 	print("Progress: Data generation time: %.2f s, Mesh update time: %.2f s" % 
 		[total_data_generation_time, total_mesh_update_time])
 	last_log_time = Time.get_ticks_msec()
 
-func generate_chunks_around(center_position: Vector3):
+func queue_chunks_around(center_position: Vector3):
 	var center_chunk = world_to_chunk_position(center_position)
-	for x in range(center_chunk.x - render_distance, center_chunk.x + render_distance + 1):
-		for y in range(center_chunk.y - render_distance, center_chunk.y + render_distance + 1):
-			for z in range(center_chunk.z - render_distance, center_chunk.z + render_distance + 1):
-				var chunk_pos = Vector3(x, y, z)
-				if not chunks.has(chunk_pos):
-					create_chunk(chunk_pos)
+	var max_radius = render_distance * render_distance
+
+	for x in range(-render_distance, render_distance + 1):
+		for z in range(-render_distance, render_distance + 1):
+			for y in range(0, -render_distance - 1, -1):
+				var chunk_pos = center_chunk + Vector3(x, y, z)
+				var distance_squared = x * x + y * y + z * z
+				if distance_squared <= max_radius:
+					if not chunks.has(chunk_pos) and not chunks_to_generate.has(chunk_pos):
+						chunks_to_generate.append(chunk_pos)
+
+	chunks_to_generate.sort_custom(func(a, b):
+		var a_dist = center_chunk.distance_squared_to(a)
+		var b_dist = center_chunk.distance_squared_to(b)
+		if abs(a_dist - b_dist) < 0.001:  # If distances are very close
+			return a.y > b.y  # Prioritize higher y values
+		return a_dist < b_dist  # Otherwise, sort by distance
+	)
+
+func generate_next_chunk():
+	if chunks_to_generate.is_empty():
+		return
+
+	var chunk_pos = chunks_to_generate.pop_front()
+	create_chunk(chunk_pos)
 
 func create_chunk(chunk_position: Vector3):
 	var chunk = SmoothVoxelChunk.new()
@@ -60,7 +84,6 @@ func update_chunk_and_neighbors(chunk_position: Vector3):
 		Vector3(0, 1, 0), Vector3(0, -1, 0),
 		Vector3(0, 0, 1), Vector3(0, 0, -1)
 	]
-	
 	for direction in directions:
 		var neighbor_pos = chunk_position + direction
 		if chunks.has(neighbor_pos) and not update_queue.has(neighbor_pos):
@@ -68,6 +91,7 @@ func update_chunk_and_neighbors(chunk_position: Vector3):
 	
 	if not update_queue.has(chunk_position):
 		update_queue.append(chunk_position)
+	
 
 func _start_next_update():
 	if update_queue.is_empty():
@@ -202,6 +226,3 @@ func _exit_tree():
 		# Wait for the thread to finish
 		modification_thread.wait_to_finish()
 	
-	# Wait for all worker threads to finish
-	for i in range(MAX_THREADS):
-		thread_semaphore.wait()
