@@ -9,8 +9,7 @@ var should_exit_thread: bool = false
 
 var chunks = {}
 var chunk_size = 16
-var render_distance = 33
-var thread_semaphore: Semaphore
+var render_distance = 32
 
 var total_data_generation_time = 0.0
 var total_mesh_update_time = 0.0
@@ -25,7 +24,6 @@ var chunks_to_generate = []
 
 func _ready():
 	modification_mutex = Mutex.new()
-	thread_semaphore = Semaphore.new()
 	queue_chunks_around(Vector3.ZERO)
 
 func _process(delta):
