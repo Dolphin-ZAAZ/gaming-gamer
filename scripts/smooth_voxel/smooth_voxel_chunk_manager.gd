@@ -2,12 +2,41 @@ extends Node3D
 
 class_name SmoothVoxelChunkManager
 
+var modification_thread: Thread
+var modification_mutex: Mutex
+var modification_queue: Array = []
+var should_exit_thread: bool = false
+
 var chunks = {}
-var chunk_size = 8
+var chunk_size = 4
 var render_distance = 3
+var thread_semaphore: Semaphore
+const MAX_THREADS = 3  # 3 worker threads + 1 main thread = 4 total
+
+var total_data_generation_time = 0.0
+var total_mesh_update_time = 0.0
+var last_log_time = 0.0
+var update_count = 0
+
+var update_queue = []
+var update_thread: Thread
+var is_updating = false
 
 func _ready():
 	generate_chunks_around(Vector3.ZERO)
+	modification_mutex = Mutex.new()
+
+func _process(delta):
+	if Time.get_ticks_msec() - last_log_time > 3000:  # Log every 3 seconds
+		log_progress()
+
+	if not is_updating and not update_queue.is_empty():
+		_start_next_update()
+
+func log_progress():
+	print("Progress: Data generation time: %.2f s, Mesh update time: %.2f s" % 
+		[total_data_generation_time, total_mesh_update_time])
+	last_log_time = Time.get_ticks_msec()
 
 func generate_chunks_around(center_position: Vector3):
 	var center_chunk = world_to_chunk_position(center_position)
@@ -34,16 +63,44 @@ func update_chunk_and_neighbors(chunk_position: Vector3):
 	
 	for direction in directions:
 		var neighbor_pos = chunk_position + direction
-		if chunks.has(neighbor_pos):
-			update_chunk(neighbor_pos)
+		if chunks.has(neighbor_pos) and not update_queue.has(neighbor_pos):
+			update_queue.append(neighbor_pos)
 	
-	update_chunk(chunk_position)
+	if not update_queue.has(chunk_position):
+		update_queue.append(chunk_position)
 
-func update_chunk(chunk_position: Vector3):
+func _start_next_update():
+	if update_queue.is_empty():
+		return
+
+	var chunk_position = update_queue.pop_front()
 	var chunk = chunks[chunk_position]
+	
+	var start_time = Time.get_ticks_msec()
 	var extended_voxel_data = get_extended_voxel_data(chunk_position)
-	chunk.update_mesh_and_collider(extended_voxel_data)
+	var data_generation_time = (Time.get_ticks_msec() - start_time) / 1000.0
+	total_data_generation_time += data_generation_time
 
+	is_updating = true
+	update_thread = Thread.new()
+	update_thread.start(Callable(self, "_thread_update_chunk").bind(chunk, extended_voxel_data))
+
+func _thread_update_chunk(chunk, extended_voxel_data):
+	var start_time = Time.get_ticks_msec()
+	chunk.update_mesh_and_collider(extended_voxel_data)
+	var mesh_update_time = (Time.get_ticks_msec() - start_time) / 1000.0
+	call_deferred("_finish_chunk_update", mesh_update_time)
+
+func _finish_chunk_update(mesh_update_time):
+	total_mesh_update_time += mesh_update_time
+	update_count += 1
+	
+	if update_count % 10 == 0:  # Log every 10 updates
+		log_progress()
+	
+	is_updating = false
+	update_thread.wait_to_finish()
+	
 func get_extended_voxel_data(chunk_position: Vector3):
 	var extended_data = SmoothVoxelData.new(chunk_position, chunk_size + 2)
 	
@@ -74,6 +131,34 @@ func world_to_chunk_position(world_position: Vector3):
 	)
 
 func modify_voxel_density(hit_point: Vector3, radius: float, strength: float):
+	modification_mutex.lock()
+	modification_queue.append([hit_point, radius, strength])
+	modification_mutex.unlock()
+	
+	if not modification_thread:
+		modification_thread = Thread.new()
+		modification_thread.start(Callable(self, "_modification_thread_function"))
+
+func _modification_thread_function():
+	while true:
+		modification_mutex.lock()
+		var queue = modification_queue.duplicate()
+		modification_queue.clear()
+		var should_exit = should_exit_thread
+		modification_mutex.unlock()
+		
+		if should_exit and queue.is_empty():
+			break
+		
+		for task in queue:
+			_perform_modification(task[0], task[1], task[2])
+		
+		# Add a small delay to prevent the thread from hogging CPU
+		OS.delay_msec(10)
+	
+	call_deferred("_finalize_modification_thread")
+
+func _perform_modification(hit_point: Vector3, radius: float, strength: float):
 	var affected_chunks = {}
 	var radius_squared = radius * radius
 	
@@ -102,4 +187,21 @@ func modify_voxel_density(hit_point: Vector3, radius: float, strength: float):
 									affected_chunks[chunk_pos] = true
 	
 	for chunk_pos in affected_chunks:
-		update_chunk_and_neighbors(chunk_pos)
+		call_deferred("update_chunk_and_neighbors", chunk_pos)
+
+func _finalize_modification_thread():
+	if modification_thread:
+		modification_thread.wait_to_finish()
+		modification_thread = null
+
+func _exit_tree():
+	if modification_thread:
+		modification_mutex.lock()
+		should_exit_thread = true
+		modification_mutex.unlock()
+		# Wait for the thread to finish
+		modification_thread.wait_to_finish()
+	
+	# Wait for all worker threads to finish
+	for i in range(MAX_THREADS):
+		thread_semaphore.wait()

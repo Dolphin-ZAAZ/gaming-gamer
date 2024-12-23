@@ -315,51 +315,64 @@ func interpolate(p1: Vector3, p2: Vector3, val_p1: float, val_p2: float) -> Vect
 	mu = clamp(mu, 0.0, 1.0)  # Ensure mu is between 0 and 1
 	return p1 + mu * (p2 - p1)
 	
-# Generate mesh from smooth voxel data utilizing marching cubes
-func generate_mesh(voxel_data: SmoothVoxelData) -> Mesh:
-	var mesh = ArrayMesh.new()
-	var surface_tool = SurfaceTool.new()
-	surface_tool.begin(Mesh.PRIMITIVE_TRIANGLES)
 
-	# Disable culling to render both sides
-	surface_tool.set_material(create_double_sided_material())
+func generate_marching_cubes_data(voxel_data: SmoothVoxelData) -> Array:
+	var vertices = PackedVector3Array()
+	var normals = PackedVector3Array()
 	
-	for x in range(voxel_data.CHUNK_SIZE - 1):
-		for y in range(voxel_data.CHUNK_SIZE - 1):
-			for z in range(voxel_data.CHUNK_SIZE - 1):
+	var chunk_size = voxel_data.CHUNK_SIZE
+	var chunk_size_minus_one = chunk_size - 1
+	
+	# Pre-calculate corner offsets
+	const corner_offsets = [
+		Vector3i(0, 0, 0), Vector3i(1, 0, 0), Vector3i(1, 1, 0), Vector3i(0, 1, 0),
+		Vector3i(0, 0, 1), Vector3i(1, 0, 1), Vector3i(1, 1, 1), Vector3i(0, 1, 1)
+	]
+	
+	# Pre-allocate arrays
+	var cube_corners = PackedFloat32Array()
+	cube_corners.resize(8)
+	var edge_vertices = PackedVector3Array()
+	edge_vertices.resize(12)
+	
+	# Pre-calculate edge mask lookup
+	var edge_mask_lookup = PackedInt32Array()
+	edge_mask_lookup.resize(256)
+	for i in range(256):
+		edge_mask_lookup[i] = EDGE_TABLE[i]
+	
+	for x in range(chunk_size_minus_one):
+		for y in range(chunk_size_minus_one):
+			for z in range(chunk_size_minus_one):
 				var cube_index = 0
-				var cube_corners = []
-
-				# Evaluate corners of each cube
-				for i in range(8):
-					var corner = Vector3(x, y, z) + edge_vertex_offsets[i]
-					var density_value = voxel_data.get_density(int(corner.x), int(corner.y), int(corner.z))
-					cube_corners.append(density_value)
-					if density_value > 0: # Assuming 0 is the dividing threshold
+				
+				# Evaluate all corner densities for current voxel
+				for i in 8:
+					var corner = Vector3i(x, y, z) + corner_offsets[i]
+					var density_value = voxel_data.get_density(corner.x, corner.y, corner.z)
+					cube_corners[i] = density_value
+					if density_value < 0:
 						cube_index |= 1 << i
-
-				# Determine which edges need creating
-				var edge_mask = EDGE_TABLE[cube_index]
+				
+				# Lookup edge configuration
+				var edge_mask = edge_mask_lookup[cube_index]
 				if edge_mask == 0:
 					continue
-
-				# Interpolation of vertices
-				var edge_vertices = []
-				for i in range(12):
+				
+				# Calculate edge vertices
+				var base_pos = Vector3(x, y, z)
+				for i in 12:
 					if edge_mask & (1 << i):
-						var idx1 = EDGE_CONNECTIONS[i * 2]
-						var idx2 = EDGE_CONNECTIONS[i * 2 + 1]
-						var vert1 = Vector3(x, y, z) + edge_vertex_offsets[idx1]
-						var vert2 = Vector3(x, y, z) + edge_vertex_offsets[idx2]
-						edge_vertices.append(interpolate(vert1, vert2, cube_corners[idx1], cube_corners[idx2]))
-					else:
-						edge_vertices.append(Vector3())  # Placeholder for unused vertices
-
+						var idx1 = EDGE_CONNECTIONS[i << 1]
+						var idx2 = EDGE_CONNECTIONS[(i << 1) + 1]
+						var vert1 = base_pos + Vector3(corner_offsets[idx1])
+						var vert2 = base_pos + Vector3(corner_offsets[idx2])
+						edge_vertices[i] = interpolate(vert1, vert2, cube_corners[idx1], cube_corners[idx2])
+				
 				# Create triangles
 				var triangle_indices = TRIANGLE_TABLE[cube_index]
-				for i in range(0, 16, 3):
-					if triangle_indices[i] == -1:
-						break
+				var i = 0
+				while triangle_indices[i] != -1:
 					var v1 = edge_vertices[triangle_indices[i]]
 					var v2 = edge_vertices[triangle_indices[i + 1]]
 					var v3 = edge_vertices[triangle_indices[i + 2]]
@@ -367,49 +380,53 @@ func generate_mesh(voxel_data: SmoothVoxelData) -> Mesh:
 					# Calculate normal
 					var normal = (v2 - v1).cross(v3 - v1).normalized()
 					
-					# Add vertices with normals
-					surface_tool.set_normal(normal)
-					surface_tool.add_vertex(v1)
-					surface_tool.add_vertex(v2)
-					surface_tool.add_vertex(v3)
+					# Add vertices and normals (swapped v2 and v3)
+					vertices.append(v1)
+					vertices.append(v3)  # Swapped with v2
+					vertices.append(v2)  # Swapped with v3
+					normals.append(normal)
+					normals.append(normal)
+					normals.append(normal)
 					
-					# Add reversed triangle for back-face
-					surface_tool.set_normal(-normal)
-					surface_tool.add_vertex(v3)
-					surface_tool.add_vertex(v2)
-					surface_tool.add_vertex(v1)
+					i += 3
+	
+	return [vertices, normals]
 
+func generate_mesh(marching_cubes_data: Array) -> Mesh:
+	var vertices = marching_cubes_data[0]
+	var normals = marching_cubes_data[1]
+	
+	var mesh = ArrayMesh.new()
+	var surface_tool = SurfaceTool.new()
+	surface_tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	surface_tool.set_material(create_double_sided_material())
+	
+	for i in range(vertices.size()):
+		surface_tool.set_normal(normals[i])
+		surface_tool.add_vertex(vertices[i])
+	
 	surface_tool.index()
 	surface_tool.commit(mesh)
 	return mesh
 
+func generate_collider(marching_cubes_data: Array) -> StaticBody3D:
+	var vertices = marching_cubes_data[0]
+	
+	var static_body = StaticBody3D.new()
+	
+	# Create a concave polygon shape
+	var collision_shape = CollisionShape3D.new()
+	var concave_polygon_shape = ConcavePolygonShape3D.new()
+	
+	# Set the faces of the concave polygon shape
+	# Each face is defined by 3 vertices (a triangle)
+	concave_polygon_shape.set_faces(vertices)
+	
+	collision_shape.shape = concave_polygon_shape
+	static_body.add_child(collision_shape)
+	
+	return static_body
+	
 func create_double_sided_material() -> StandardMaterial3D:
 	var material = StandardMaterial3D.new()
-	material.cull_mode = StandardMaterial3D.CULL_DISABLED
 	return material
-
-func modify_voxel_density(hit_point: Vector3, voxel_data: SmoothVoxelData):
-	var radius = 2.0  # Adjust this value to change the affected area
-	var strength = 0.5  # Adjust this value to change how much density is removed per click
-	
-	for x in range(-radius, radius + 1):
-		for y in range(-radius, radius + 1):
-			for z in range(-radius, radius + 1):
-				var voxel_pos = Vector3(
-					floor(hit_point.x) + x,
-					floor(hit_point.y) + y,
-					floor(hit_point.z) + z
-				)
-				
-				# Check if the voxel is within the chunk bounds
-				if (voxel_pos.x >= 0 and voxel_pos.x < voxel_data.CHUNK_SIZE and
-					voxel_pos.y >= 0 and voxel_pos.y < voxel_data.CHUNK_SIZE and
-					voxel_pos.z >= 0 and voxel_pos.z < voxel_data.CHUNK_SIZE):
-					
-					var distance = hit_point.distance_to(voxel_pos)
-					if distance <= radius:
-						var current_density = voxel_data.get_density(voxel_pos.x, voxel_pos.y, voxel_pos.z)
-						var new_density = current_density - strength
-						print(new_density)
-						voxel_data.set_density(voxel_pos.x, voxel_pos.y, voxel_pos.z, new_density)
-	return voxel_data
