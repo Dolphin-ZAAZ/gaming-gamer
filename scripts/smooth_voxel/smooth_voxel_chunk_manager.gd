@@ -9,7 +9,7 @@ var should_exit_thread: bool = false
 
 var chunks = {}
 var chunk_size = 16
-var render_distance = 32
+var render_distance = 4
 
 var total_data_generation_time = 0.0
 var total_mesh_update_time = 0.0
@@ -21,6 +21,20 @@ var update_thread: Thread
 var is_updating = false
 
 var chunks_to_generate = []
+
+var densities
+var mesh_template
+var collider_template
+var extended_data: SmoothVoxelData
+var mesh_object
+
+func _init() -> void:
+	densities = SmoothVoxelData.new(chunk_size)
+	mesh_object = SmoothVoxelMesh.new()
+	var marching_cube_data = mesh_object.generate_marching_cubes_data(densities)
+	mesh_template = mesh_object.generate_mesh(marching_cube_data)
+	collider_template = mesh_object.generate_collider(marching_cube_data)
+	extended_data = SmoothVoxelData.new(chunk_size + 2)
 
 func _ready():
 	modification_mutex = Mutex.new()
@@ -70,7 +84,8 @@ func generate_next_chunk():
 	create_chunk(chunk_pos)
 
 func create_chunk(chunk_position: Vector3):
-	var chunk = SmoothVoxelChunk.new()
+	print(chunk_size)
+	var chunk = SmoothVoxelChunk.new(densities, mesh_object, mesh_template, collider_template)
 	chunk.position = chunk_position * chunk_size
 	chunks[chunk_position] = chunk	
 	add_child(chunk)
@@ -124,8 +139,7 @@ func _finish_chunk_update(mesh_update_time):
 	update_thread.wait_to_finish()
 	
 func get_extended_voxel_data(chunk_position: Vector3):
-	var extended_data = SmoothVoxelData.new(chunk_position, chunk_size + 2)
-	
+
 	for x in range(-1, chunk_size + 1):
 		for y in range(-1, chunk_size + 1):
 			for z in range(-1, chunk_size + 1):

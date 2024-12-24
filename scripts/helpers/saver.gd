@@ -1,9 +1,8 @@
-extends Resource
-
-class_name SmoothVoxelCollider
+extends Node
+class_name Saver
 
 const EDGE_TABLE: PackedInt32Array = [
-	0x000, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
+	0x000, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c, 
 	0x80c, 0x905, 0xa0f, 0xb06, 0xc0a, 0xd03, 0xe09, 0xf00,
 	0x190, 0x099, 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c,
 	0x99c, 0x895, 0xb9f, 0xa96, 0xd9a, 0xc93, 0xf99, 0xe90,
@@ -37,7 +36,7 @@ const EDGE_TABLE: PackedInt32Array = [
 	0x70c, 0x605, 0x50f, 0x406, 0x30a, 0x203, 0x109, 0x000
 ]
 
-const TRIANGLE_TABLE: Array = [
+const TRIANGLE_TABLE: Array = [  
 	[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 ],
 	[ 0, 8, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 ],
 	[ 0, 1, 9, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 ],
@@ -296,7 +295,7 @@ const TRIANGLE_TABLE: Array = [
 	[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 ]
 ]
 
-var edge_vertex_offsets = [
+var EDGE_VERTEX_OFFSETS = [
 	Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 1), Vector3(0, 0, 1),
 	Vector3(0, 1, 0), Vector3(1, 1, 0), Vector3(1, 1, 1), Vector3(0, 1, 1)
 ]
@@ -306,80 +305,5 @@ var EDGE_CONNECTIONS: PackedInt32Array = [
 	4, 5, 5, 6, 6, 7, 7, 4,  # edges from top square vertices
 	0, 4, 1, 5, 2, 6, 3, 7   # vertical edges connecting the squares
 ]
-
-# Compute linear interpolation
-func interpolate(p1: Vector3, p2: Vector3, val_p1: float, val_p2: float) -> Vector3:
-	if abs(val_p1 - val_p2) < 0.0001:
-		return p1
-	var mu = (0.0 - val_p1) / (val_p2 - val_p1)
-	return p1 + mu * (p2 - p1)
-
-func generate_collider(voxel_data: SmoothVoxelData) -> StaticBody3D:
-	var static_body = StaticBody3D.new()
-
-	# Create a ConcavePolygonShape to represent the complex shape of the mesh
-	var shape = ConcavePolygonShape3D.new()
-	var collision_data = generate_collision_data(voxel_data)
-
-	if collision_data.size() > 0:
-		shape.data = collision_data
-
-	var collision_shape = CollisionShape3D.new()
-	collision_shape.shape = shape
-	static_body.add_child(collision_shape)
-	return static_body
-
-func generate_collision_data(voxel_data: SmoothVoxelData) -> PackedVector3Array:
-	var collision_vertices = PackedVector3Array()
-	
-	for x in range(voxel_data.CHUNK_SIZE - 1):
-		for y in range(voxel_data.CHUNK_SIZE - 1):
-			for z in range(voxel_data.CHUNK_SIZE - 1):
-				var cube_index = 0
-				var cube_corners = []
-
-				# Evaluate all corner densities for current voxel
-				for i in range(8):
-					var corner = Vector3(x, y, z) + edge_vertex_offsets[i]
-					var density_value = voxel_data.get_density(int(corner.x), int(corner.y), int(corner.z))
-					cube_corners.append(density_value)
-					if density_value < 0:
-						cube_index |= 1 << i
-
-				# Lookup edge configuration
-				var edge_mask = EDGE_TABLE[cube_index]
-				if edge_mask == 0:
-					continue
-
-				var edge_vertices = []
-				edge_vertices.resize(12)  # Allocate space for 12 possible edges in a cube
-				for i in range(12):
-					if edge_mask & (1 << i):
-						var idx1 = EDGE_CONNECTIONS[i * 2]
-						var idx2 = EDGE_CONNECTIONS[i * 2 + 1]
-						var vert1 = Vector3(x, y, z) + edge_vertex_offsets[idx1]
-						var vert2 = Vector3(x, y, z) + edge_vertex_offsets[idx2]
-						edge_vertices[i] = interpolate(vert1, vert2, cube_corners[idx1], cube_corners[idx2])
-					else:
-						edge_vertices[i] = Vector3()  # Default space filler for unused edges
-
-				# Create triangles
-				var triangle_indices = TRIANGLE_TABLE[cube_index]
-				for i in range(0, 16, 3):
-					if triangle_indices[i] == -1:
-						break
-					var v1 = edge_vertices[triangle_indices[i]]
-					var v2 = edge_vertices[triangle_indices[i + 1]]
-					var v3 = edge_vertices[triangle_indices[i + 2]]
-					
-					# Add triangle
-					collision_vertices.append(v1)
-					collision_vertices.append(v2)
-					collision_vertices.append(v3)
-					
-					# Add reversed triangle for back-face collision
-					collision_vertices.append(v3)
-					collision_vertices.append(v2)
-					collision_vertices.append(v1)
-
-	return collision_vertices
+func _ready() -> void:
+    DataHelper.save_array_to_file("marching_cube_constants", [EDGE_CONNECTIONS, EDGE_VERTEX_OFFSETS, TRIANGLE_TABLE, EDGE_TABLE])

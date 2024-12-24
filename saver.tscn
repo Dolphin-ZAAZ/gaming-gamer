@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://dwmac4p6ydyr6"]
+
+[ext_resource type="Script" path="res://scripts/helpers/saver.gd" id="1_38kvr"]
+
+[node name="Saver" type="Node"]
+script = ExtResource("1_38kvr")

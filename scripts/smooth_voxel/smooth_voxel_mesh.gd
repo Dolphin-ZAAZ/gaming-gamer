@@ -307,6 +307,9 @@ var EDGE_CONNECTIONS: PackedInt32Array = [
 	0, 4, 1, 5, 2, 6, 3, 7   # vertical edges connecting the squares
 ]
 
+var mesh_template
+var collider_template
+
 # Compute linear interpolation
 func interpolate(p1: Vector3, p2: Vector3, val_p1: float, val_p2: float) -> Vector3:
 	if abs(val_p1 - val_p2) < 0.0001:
@@ -393,6 +396,9 @@ func generate_marching_cubes_data(voxel_data: SmoothVoxelData) -> Array:
 	return [vertices, normals]
 
 func generate_mesh(marching_cubes_data: Array) -> Mesh:
+	if mesh_template:
+		print("mesh")
+		return mesh_template
 	var vertices = marching_cubes_data[0]
 	var normals = marching_cubes_data[1]
 	
@@ -410,6 +416,9 @@ func generate_mesh(marching_cubes_data: Array) -> Mesh:
 	return mesh
 
 func generate_collider(marching_cubes_data: Array) -> StaticBody3D:
+	if collider_template:
+		print("collider")
+		return collider_template
 	var vertices = marching_cubes_data[0]
 	
 	var static_body = StaticBody3D.new()
@@ -424,7 +433,6 @@ func generate_collider(marching_cubes_data: Array) -> StaticBody3D:
 	
 	collision_shape.shape = concave_polygon_shape
 	static_body.add_child(collision_shape)
-	
 	return static_body
 	
 func create_double_sided_material() -> StandardMaterial3D:
