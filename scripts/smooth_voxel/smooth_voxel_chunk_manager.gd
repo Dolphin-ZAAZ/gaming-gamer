@@ -70,7 +70,7 @@ func generate_next_chunk():
 	create_chunk(chunk_pos)
 
 func create_chunk(chunk_position: Vector3):
-	var chunk = SmoothVoxelChunk.new()
+	var chunk = SmoothVoxelChunk.new(chunk_size)
 	chunk.position = chunk_position * chunk_size
 	chunks[chunk_position] = chunk	
 	add_child(chunk)

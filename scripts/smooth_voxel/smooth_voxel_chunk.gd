@@ -6,8 +6,8 @@ var mesh
 var mesh_instance
 var collider 
 
-func _init() -> void:
-	voxel_data = SmoothVoxelData.new()
+func _init(size) -> void:
+	voxel_data = SmoothVoxelData.new(size)
 	mesh = SmoothVoxelMesh.new()
 
 func get_voxel_data():
