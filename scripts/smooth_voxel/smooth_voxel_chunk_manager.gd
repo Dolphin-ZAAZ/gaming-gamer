@@ -9,7 +9,7 @@ var should_exit_thread: bool = false
 
 var chunks = {}
 var chunk_size = 16
-var render_distance = 32
+var render_distance = 4
 
 var total_data_generation_time = 0.0
 var total_mesh_update_time = 0.0
@@ -124,7 +124,7 @@ func _finish_chunk_update(mesh_update_time):
 	update_thread.wait_to_finish()
 	
 func get_extended_voxel_data(chunk_position: Vector3):
-	var extended_data = SmoothVoxelData.new(chunk_position, chunk_size + 2)
+	var extended_data = SmoothVoxelData.new(chunk_size + 2)
 	
 	for x in range(-1, chunk_size + 1):
 		for y in range(-1, chunk_size + 1):

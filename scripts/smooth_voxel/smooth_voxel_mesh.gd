@@ -397,16 +397,28 @@ func generate_mesh(marching_cubes_data: Array) -> Mesh:
 	var normals = marching_cubes_data[1]
 	
 	var mesh = ArrayMesh.new()
-	var surface_tool = SurfaceTool.new()
-	surface_tool.begin(Mesh.PRIMITIVE_TRIANGLES)
-	surface_tool.set_material(create_double_sided_material())
+	var arrays = []
+	arrays.resize(Mesh.ARRAY_MAX)
 	
+	# Use PoolVector3Array for better performance
+	var pooled_vertices = PackedVector3Array(vertices)
+	var pooled_normals = PackedVector3Array(normals)
+	
+	arrays[Mesh.ARRAY_VERTEX] = pooled_vertices
+	arrays[Mesh.ARRAY_NORMAL] = pooled_normals
+	
+	# Generate indices for triangles
+	var indices = PackedInt32Array()
+	indices.resize(vertices.size())
 	for i in range(vertices.size()):
-		surface_tool.set_normal(normals[i])
-		surface_tool.add_vertex(vertices[i])
+		indices[i] = i
 	
-	surface_tool.index()
-	surface_tool.commit(mesh)
+	arrays[Mesh.ARRAY_INDEX] = indices
+	
+	# Create the mesh directly from the arrays
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.surface_set_material(0, create_double_sided_material())
+	
 	return mesh
 
 func generate_collider(marching_cubes_data: Array) -> StaticBody3D:
@@ -418,11 +430,13 @@ func generate_collider(marching_cubes_data: Array) -> StaticBody3D:
 	var collision_shape = CollisionShape3D.new()
 	var concave_polygon_shape = ConcavePolygonShape3D.new()
 	
-	# Set the faces of the concave polygon shape
-	# Each face is defined by 3 vertices (a triangle)
-	concave_polygon_shape.set_faces(vertices)
+	# Convert vertices to PoolVector3Array for better performance
+	var pooled_vertices = PackedVector3Array(vertices)
 	
-	collision_shape.shape = concave_polygon_shape
+	# Set the faces of the concave polygon shape directly
+	concave_polygon_shape.set_faces(pooled_vertices)
+	
+	collision_shape.set_shape(concave_polygon_shape)
 	static_body.add_child(collision_shape)
 	
 	return static_body
