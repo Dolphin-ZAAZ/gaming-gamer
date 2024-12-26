@@ -7,25 +7,63 @@ var vertex_map: Dictionary = {}
 class OctreeCache:
 	var octree: Octree
 	var vertex_map: Dictionary
+	var adaptive_marching_cubes: AdaptiveMarchingCubes
 
-	func _init(octree: Octree, vertex_map: Dictionary):
+	func _init(octree: Octree, vertex_map: Dictionary, adaptive_marching_cubes: AdaptiveMarchingCubes):
 		self.octree = octree
 		self.vertex_map = vertex_map
+		self.adaptive_marching_cubes = adaptive_marching_cubes
 
 	func modify_density(position: Vector3, value: float, radius: float):
-		modify_octree_recursive(octree, position, value, radius)
+		var affected_nodes = []
+		modify_octree_recursive(octree, position, value, radius, affected_nodes)
 
-	func modify_octree_recursive(node: Octree, position: Vector3, value: float, radius: float):
+		var st = SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		var collision_points = []
+
+		for node in affected_nodes:
+			adaptive_marching_cubes.generate_cube_mesh(node, st, collision_points)
+
+		st.generate_normals()
+		st.index()
+		var mesh = st.commit()
+
+		#Remove the old mesh if it exist and create a new one.
+		for child in adaptive_marching_cubes.get_children():
+			if child is MeshInstance3D or child is StaticBody3D:
+				child.queue_free()
+		
+		var mesh_instance = MeshInstance3D.new()
+		mesh.surface_set_material(0, adaptive_marching_cubes.create_double_sided_material())
+		mesh_instance.mesh = mesh
+		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		adaptive_marching_cubes.add_child(mesh_instance)
+		mesh_instance.position = -Vector3(adaptive_marching_cubes.grid_size, adaptive_marching_cubes.grid_size, adaptive_marching_cubes.grid_size) * 0.5
+
+		# Generate collision shape
+		var collision_shape = CollisionShape3D.new()
+		var concave_polygon_shape = ConcavePolygonShape3D.new()
+		concave_polygon_shape.set_faces(collision_points)
+		collision_shape.shape = concave_polygon_shape
+
+		var static_body = StaticBody3D.new()
+		static_body.add_child(collision_shape)
+		adaptive_marching_cubes.add_child(static_body)
+		static_body.position = mesh_instance.position
+
+	func modify_octree_recursive(node: Octree, position: Vector3, value: float, radius: float, affected_nodes: Array):
 		var distance = node.center.distance_to(position)
 		if distance > radius + node.size * 0.866:  # sqrt(3)/2
 			return
-		
+
 		var t = 1.0 - clamp(distance / radius, 0.0, 1.0)
-		node.modification += value * t
-		
+		node.value += value * t
+		affected_nodes.append(node)
+
 		if not node.children.is_empty():
 			for child in node.children:
-				modify_octree_recursive(child, position, value, radius)
+				modify_octree_recursive(child, position, value, radius, affected_nodes)
 
 class Octree:
 	var center: Vector3
@@ -83,6 +121,54 @@ func _ready():
 	root_octree = Octree.new(Vector3.ZERO, grid_size)
 	generate_adaptive_volume()
 	generate_mesh_and_collider(collision_enabled)
+
+func world_to_octree_space(world_position: Vector3) -> Vector3:
+	var octree_position = world_position + Vector3(grid_size, grid_size, grid_size) * 0.5
+	return octree_position
+
+func octree_to_world_space(octree_position: Vector3) -> Vector3:
+	var world_position = octree_position - Vector3(grid_size, grid_size, grid_size) * 0.5
+	return world_position
+
+func find_node_containing_point(node, octree_position: Vector3) -> Octree:
+	if node == null:
+		node = root_octree
+	# Check if the position is within the current node's bounds
+	var half_size = node.size * 0.5
+	var min_bounds = node.center - Vector3(half_size, half_size, half_size)
+	var max_bounds = node.center + Vector3(half_size, half_size, half_size)
+	if not (octree_position > min_bounds and octree_position < max_bounds):
+		return null  # Position is outside this node
+
+	# If this is a leaf node, return it
+	if node.children.is_empty():
+		return node
+
+	# Recursively search in child nodes
+	for child in node.children:
+		var found_node = find_node_containing_point(child, octree_position)
+		if found_node != null:
+			return found_node
+
+	return node #Should never reach this point
+
+func refine_node(node: Octree, octree_position: Vector3):
+	# Check if the position is within the current node's bounds
+	var half_size = node.size * 0.5
+	var min_bounds = node.center - Vector3(half_size, half_size, half_size)
+	var max_bounds = node.center + Vector3(half_size, half_size, half_size)
+	if not (octree_position > min_bounds and octree_position < max_bounds):
+		return  # Position is outside this node, should never reach this point
+
+	# Check if the node should be subdivided
+	if should_subdivide(node) and node.size > 1:
+		node.subdivide()
+		for child in node.children:
+			refine_node(child, octree_position)
+
+
+func create_octree_cache() -> OctreeCache:
+	return OctreeCache.new(root_octree, vertex_map, self)
 
 func generate_adaptive_volume():
 	subdivide_octree(root_octree, 0)
@@ -311,23 +397,3 @@ func get_edge_key(v1: Vector3, v2: Vector3) -> String:
 	var rounded_v1 = Vector3(snapped(v1.x, 0.001), snapped(v1.y, 0.001), snapped(v1.z, 0.001))
 	var rounded_v2 = Vector3(snapped(v2.x, 0.001), snapped(v2.y, 0.001), snapped(v2.z, 0.001))
 	return "%s-%s" % [rounded_v1, rounded_v2] if rounded_v1 < rounded_v2 else "%s-%s" % [rounded_v2, rounded_v1]
-
-
-func smooth_vertex_position(vertex: Vector3) -> Vector3:
-	var sample_offset = Vector3(0.1, 0.1, 0.1)
-	var samples = [
-		density_function(chunk_type, vertex + sample_offset),
-		density_function(chunk_type, vertex - sample_offset),
-		density_function(chunk_type, vertex + Vector3(sample_offset.x, -sample_offset.y, -sample_offset.z)),
-		density_function(chunk_type, vertex + Vector3(-sample_offset.x, sample_offset.y, -sample_offset.z)),
-		density_function(chunk_type, vertex + Vector3(-sample_offset.x, -sample_offset.y, sample_offset.z))
-	]
-	
-	var avg_sample = 0.0
-	for sample in samples:
-		avg_sample += sample
-	avg_sample /= samples.size()
-	
-	var smoothed_value = lerp(density_function(chunk_type, vertex), avg_sample, smoothing_factor)
-	var t = (iso_level - density_function(chunk_type, vertex)) / (smoothed_value - density_function(chunk_type, vertex))
-	return vertex.lerp(vertex + sample_offset, t)

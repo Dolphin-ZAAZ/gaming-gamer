@@ -51,5 +51,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0726175, 58.6838, -0.03909
 
 [node name="AdaptiveMarchingCubes" type="Node3D" parent="."]
 script = ExtResource("3_q7hlc")
-grid_size = 248.0
+collision_enabled = null
+grid_size = 200.0
 max_depth = 5

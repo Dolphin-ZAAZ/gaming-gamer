@@ -52,6 +52,10 @@ move_down={
 ]
 }
 
+[physics]
+
+3d/default_gravity_vector=Vector3(0, -2.5, 0)
+
 [rendering]
 
 renderer/rendering_method="mobile"

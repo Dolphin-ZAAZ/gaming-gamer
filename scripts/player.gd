@@ -1,6 +1,6 @@
 extends CharacterBody3D
 
-const SPEED = 1000.0
+const SPEED = 100.0
 const JUMP_VELOCITY = 50.0
 
 var voxel_mesh: SmoothVoxelMesh
@@ -51,16 +51,16 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-# Add this function to handle mining
 func mine_at_position(screen_position: Vector2):
 	var ray_length = 1000
 	var from = camera.project_ray_origin(screen_position)
 	var to = from + camera.project_ray_normal(screen_position) * ray_length
-	
 	var space_state = get_world_3d().direct_space_state
 	var query = PhysicsRayQueryParameters3D.create(from, to)
 	var result = space_state.intersect_ray(query)
-	
+
 	if result:
 		var hit_point = result.position
-		voxel_chunk.modify_voxel_density(hit_point, 5, 100) 
+		var octree_position = voxel_chunk.world_to_octree_space(hit_point)
+		var octree_cache = voxel_chunk.create_octree_cache()
+		octree_cache.modify_density(octree_position, -0.005, 0.1)
