@@ -48,7 +48,7 @@ func _ready():
 	
 	root_octree = Octree.new(Vector3.ZERO, grid_size)
 	generate_adaptive_volume()
-	generate_mesh()
+	generate_mesh_and_collider()
 
 func generate_adaptive_volume():
 	subdivide_octree(root_octree, 0)
@@ -58,7 +58,6 @@ func smooth_octree_transitions(node: Octree):
 	if node.children.is_empty():
 		return
 	
-	# Smooth values between this node and its children
 	var avg_value = 0.0
 	for child in node.children:
 		avg_value += child.value
@@ -90,12 +89,15 @@ func sample_density_function(point: Vector3) -> float:
 
 
 
-func generate_mesh():
+
+func generate_mesh_and_collider():
 	vertex_map.clear()
 	var st = SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	
-	process_octree(root_octree, st)
+	var collision_points = []
+	
+	process_octree(root_octree, st, collision_points)
 	
 	st.generate_normals()
 	st.index()
@@ -107,22 +109,33 @@ func generate_mesh():
 	print("Vertex Count: ", mesh.get_surface_count())
 	add_child(mesh_instance)
 
-	# Position the mesh at the center of the scene
 	mesh_instance.position = -Vector3(grid_size, grid_size, grid_size) * 0.5
+
+	# Generate collision shape
+	var collision_shape = CollisionShape3D.new()
+	var concave_polygon_shape = ConcavePolygonShape3D.new()
+	concave_polygon_shape.set_faces(collision_points)
+	collision_shape.shape = concave_polygon_shape
+
+	var static_body = StaticBody3D.new()
+	static_body.add_child(collision_shape)
+	add_child(static_body)
+	static_body.position = mesh_instance.position
 
 func create_double_sided_material() -> StandardMaterial3D:
 	var material = StandardMaterial3D.new()
 	material.cull_mode = StandardMaterial3D.CULL_DISABLED
 	return material
 
-func process_octree(node: Octree, st: SurfaceTool):
+func process_octree(node: Octree, st: SurfaceTool, collision_points: Array):
 	if node.children.is_empty():
-		generate_cube_mesh(node, st)
+		generate_cube_mesh(node, st, collision_points)
 	else:
 		for child in node.children:
-			process_octree(child, st)
+			process_octree(child, st, collision_points)
 
-func generate_cube_mesh(node: Octree, st: SurfaceTool):
+
+func generate_cube_mesh(node: Octree, st: SurfaceTool, collision_points: Array):
 	var corners = get_cube_corners(node)
 	var corner_values = []
 	for corner in corners:
@@ -156,6 +169,11 @@ func generate_cube_mesh(node: Octree, st: SurfaceTool):
 		st.set_normal(normal)
 		st.add_vertex(c)
 
+		# Add collision points
+		collision_points.append(a)
+		collision_points.append(b)
+		collision_points.append(c)
+
 func get_cube_corners(node: Octree) -> Array:
 	var corners = []
 	var half_size = node.size * 0.5
@@ -174,13 +192,13 @@ func _input(event):
 
 func regenerate_mesh():
 	for child in get_children():
-		if child is MeshInstance3D:
+		if child is MeshInstance3D or child is StaticBody3D:
 			child.queue_free()
 	
 	noise.seed = randi()
 	root_octree = Octree.new(Vector3.ZERO, grid_size)
 	generate_adaptive_volume()
-	generate_mesh()
+	generate_mesh_and_collider()
 
 func get_interpolated_vertex(corners: Array, values: Array, index1: int, index2: int) -> Vector3:
 	var edge_key = get_edge_key(corners[index1], corners[index2])

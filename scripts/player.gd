@@ -1,7 +1,7 @@
 extends CharacterBody3D
 
-const SPEED = 10.0
-const JUMP_VELOCITY = 10.0
+const SPEED = 1000.0
+const JUMP_VELOCITY = 50.0
 
 var voxel_mesh: SmoothVoxelMesh
 var voxel_data: SmoothVoxelData
