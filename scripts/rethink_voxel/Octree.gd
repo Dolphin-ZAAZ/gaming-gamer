@@ -29,13 +29,19 @@ class Octree:
 					children.append(Octree.new(child_center, half_size))
 
 var root_octree: Octree
-@export var iso_level: float = 0.0
-@export var grid_size: float = 20.0
-@export var max_depth: int = 5
+@export var collision_enabled: bool = true
+@export var iso_level: float = 0.5
+@export var grid_size: float = 10000.0
+@export var max_depth: int = 6
 @export var noise_scale: float = 0.1
-@export var noise_octaves: int = 3
-@export var boundary_thickness: float = 2.0
-@export var smoothing_factor: float = 0.1
+@export var noise_frequency: float = 0.1
+@export var noise_octaves: int = 4
+@export var smoothing_factor: float = 0.05
+
+@export var cave_noise_scale: float = 0.01
+@export var cave_threshold: float = 0.5
+@export var cave_sharpness: float = 5.0
+@export var solid_threshold: float = 0.5
 
 var noise: FastNoiseLite
 
@@ -43,12 +49,13 @@ func _ready():
 	noise = FastNoiseLite.new()
 	noise.noise_type = FastNoiseLite.TYPE_PERLIN
 	noise.seed = randi()
+	noise.frequency = noise_frequency
 	
 	cube_tables = MarchingCubesTables.new()
 	
 	root_octree = Octree.new(Vector3.ZERO, grid_size)
 	generate_adaptive_volume()
-	generate_mesh_and_collider()
+	generate_mesh_and_collider(collision_enabled)
 
 func generate_adaptive_volume():
 	subdivide_octree(root_octree, 0)
@@ -71,7 +78,7 @@ func subdivide_octree(node: Octree, depth: int):
 	if depth >= max_depth:
 		return
 	
-	node.value = sample_density_function(node.center)
+	node.value = boulder_density_function(node.center)
 	
 	if should_subdivide(node):
 		node.subdivide()
@@ -82,15 +89,33 @@ func should_subdivide(node: Octree) -> bool:
 	return abs(node.value - iso_level) < node.size * 0.1
 
 
-func sample_density_function(point: Vector3) -> float:
-	var base_density = point.length() / grid_size
-	var noise_value = noise.get_noise_3dv(point * noise_scale) * 0.5
-	return base_density + noise_value
+func boulder_density_function(point: Vector3) -> float:
+	# Calculate distance from the center of the grid
+	var distance_from_center = point.length()
+	var max_distance = grid_size * 0.5
+	
+	# Create a smooth falloff towards the edges
+	var edge_falloff = smoothstep(0, max_distance, distance_from_center)
+	edge_falloff = 1.0 - edge_falloff  # Invert the falloff
+	
+	# Create solid interior
+	var solid_interior = 1.0 if edge_falloff > solid_threshold else -1.0
+	
+	# Cave noise
+	var cave_noise = noise.get_noise_3dv(point * cave_noise_scale) * 0.5 + 0.5
+	
+	# Create caves
+	var cave_value = smoothstep(cave_threshold, cave_threshold + 0.1, cave_noise) * cave_sharpness
+	
+	# Combine solid interior with cave structures
+	var combined_density = solid_interior - cave_value
+	
+	# Apply edge falloff
+	combined_density = lerp(combined_density, -1.0, 1.0 - edge_falloff)
+	
+	return combined_density
 
-
-
-
-func generate_mesh_and_collider():
+func generate_mesh_and_collider(collider_enabled: bool):
 	vertex_map.clear()
 	var st = SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -111,16 +136,17 @@ func generate_mesh_and_collider():
 
 	mesh_instance.position = -Vector3(grid_size, grid_size, grid_size) * 0.5
 
-	# Generate collision shape
-	var collision_shape = CollisionShape3D.new()
-	var concave_polygon_shape = ConcavePolygonShape3D.new()
-	concave_polygon_shape.set_faces(collision_points)
-	collision_shape.shape = concave_polygon_shape
+	if collider_enabled:
+		# Generate collision shape
+		var collision_shape = CollisionShape3D.new()
+		var concave_polygon_shape = ConcavePolygonShape3D.new()
+		concave_polygon_shape.set_faces(collision_points)
+		collision_shape.shape = concave_polygon_shape
 
-	var static_body = StaticBody3D.new()
-	static_body.add_child(collision_shape)
-	add_child(static_body)
-	static_body.position = mesh_instance.position
+		var static_body = StaticBody3D.new()
+		static_body.add_child(collision_shape)
+		add_child(static_body)
+		static_body.position = mesh_instance.position
 
 func create_double_sided_material() -> StandardMaterial3D:
 	var material = StandardMaterial3D.new()
@@ -139,9 +165,8 @@ func generate_cube_mesh(node: Octree, st: SurfaceTool, collision_points: Array):
 	var corners = get_cube_corners(node)
 	var corner_values = []
 	for corner in corners:
-		corner_values.append(sample_density_function(corner))
+		corner_values.append(boulder_density_function(corner))
 	
-	print("Corner values: ", corner_values)
 	var cube_index = 0
 	for i in range(8):
 		if corner_values[i] < iso_level:
@@ -169,10 +194,14 @@ func generate_cube_mesh(node: Octree, st: SurfaceTool, collision_points: Array):
 		st.set_normal(normal)
 		st.add_vertex(c)
 
-		# Add collision points
+		# Add collision points for both sides of the triangle
 		collision_points.append(a)
 		collision_points.append(b)
 		collision_points.append(c)
+		collision_points.append(c)
+		collision_points.append(b)
+		collision_points.append(a)
+
 
 func get_cube_corners(node: Octree) -> Array:
 	var corners = []
@@ -198,7 +227,7 @@ func regenerate_mesh():
 	noise.seed = randi()
 	root_octree = Octree.new(Vector3.ZERO, grid_size)
 	generate_adaptive_volume()
-	generate_mesh_and_collider()
+	generate_mesh_and_collider(collision_enabled)
 
 func get_interpolated_vertex(corners: Array, values: Array, index1: int, index2: int) -> Vector3:
 	var edge_key = get_edge_key(corners[index1], corners[index2])
@@ -219,11 +248,11 @@ func get_edge_key(v1: Vector3, v2: Vector3) -> String:
 func smooth_vertex_position(vertex: Vector3) -> Vector3:
 	var sample_offset = Vector3(0.1, 0.1, 0.1)
 	var samples = [
-		sample_density_function(vertex + sample_offset),
-		sample_density_function(vertex - sample_offset),
-		sample_density_function(vertex + Vector3(sample_offset.x, -sample_offset.y, -sample_offset.z)),
-		sample_density_function(vertex + Vector3(-sample_offset.x, sample_offset.y, -sample_offset.z)),
-		sample_density_function(vertex + Vector3(-sample_offset.x, -sample_offset.y, sample_offset.z))
+		boulder_density_function(vertex + sample_offset),
+		boulder_density_function(vertex - sample_offset),
+		boulder_density_function(vertex + Vector3(sample_offset.x, -sample_offset.y, -sample_offset.z)),
+		boulder_density_function(vertex + Vector3(-sample_offset.x, sample_offset.y, -sample_offset.z)),
+		boulder_density_function(vertex + Vector3(-sample_offset.x, -sample_offset.y, sample_offset.z))
 	]
 	
 	var avg_sample = 0.0
@@ -231,6 +260,6 @@ func smooth_vertex_position(vertex: Vector3) -> Vector3:
 		avg_sample += sample
 	avg_sample /= samples.size()
 	
-	var smoothed_value = lerp(sample_density_function(vertex), avg_sample, smoothing_factor)
-	var t = (iso_level - sample_density_function(vertex)) / (smoothed_value - sample_density_function(vertex))
+	var smoothed_value = lerp(boulder_density_function(vertex), avg_sample, smoothing_factor)
+	var t = (iso_level - boulder_density_function(vertex)) / (smoothed_value - boulder_density_function(vertex))
 	return vertex.lerp(vertex + sample_offset, t)
