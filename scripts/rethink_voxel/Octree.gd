@@ -34,6 +34,8 @@ var root_octree: Octree
 @export var max_depth: int = 5
 @export var noise_scale: float = 0.1
 @export var noise_octaves: int = 3
+@export var boundary_thickness: float = 2.0
+@export var smoothing_factor: float = 0.1
 
 var noise: FastNoiseLite
 
@@ -50,6 +52,21 @@ func _ready():
 
 func generate_adaptive_volume():
 	subdivide_octree(root_octree, 0)
+	smooth_octree_transitions(root_octree)
+
+func smooth_octree_transitions(node: Octree):
+	if node.children.is_empty():
+		return
+	
+	# Smooth values between this node and its children
+	var avg_value = 0.0
+	for child in node.children:
+		avg_value += child.value
+	avg_value /= 8.0
+	
+	for child in node.children:
+		child.value = lerp(child.value, avg_value, smoothing_factor)
+		smooth_octree_transitions(child)
 
 func subdivide_octree(node: Octree, depth: int):
 	if depth >= max_depth:
@@ -65,10 +82,13 @@ func subdivide_octree(node: Octree, depth: int):
 func should_subdivide(node: Octree) -> bool:
 	return abs(node.value - iso_level) < node.size * 0.1
 
+
 func sample_density_function(point: Vector3) -> float:
 	var base_density = point.length() / grid_size
 	var noise_value = noise.get_noise_3dv(point * noise_scale) * 0.5
 	return base_density + noise_value
+
+
 
 func generate_mesh():
 	vertex_map.clear()
@@ -176,3 +196,23 @@ func get_edge_key(v1: Vector3, v2: Vector3) -> String:
 	var rounded_v1 = Vector3(snapped(v1.x, 0.001), snapped(v1.y, 0.001), snapped(v1.z, 0.001))
 	var rounded_v2 = Vector3(snapped(v2.x, 0.001), snapped(v2.y, 0.001), snapped(v2.z, 0.001))
 	return "%s-%s" % [rounded_v1, rounded_v2] if rounded_v1 < rounded_v2 else "%s-%s" % [rounded_v2, rounded_v1]
+
+
+func smooth_vertex_position(vertex: Vector3) -> Vector3:
+	var sample_offset = Vector3(0.1, 0.1, 0.1)
+	var samples = [
+		sample_density_function(vertex + sample_offset),
+		sample_density_function(vertex - sample_offset),
+		sample_density_function(vertex + Vector3(sample_offset.x, -sample_offset.y, -sample_offset.z)),
+		sample_density_function(vertex + Vector3(-sample_offset.x, sample_offset.y, -sample_offset.z)),
+		sample_density_function(vertex + Vector3(-sample_offset.x, -sample_offset.y, sample_offset.z))
+	]
+	
+	var avg_sample = 0.0
+	for sample in samples:
+		avg_sample += sample
+	avg_sample /= samples.size()
+	
+	var smoothed_value = lerp(sample_density_function(vertex), avg_sample, smoothing_factor)
+	var t = (iso_level - sample_density_function(vertex)) / (smoothed_value - sample_density_function(vertex))
+	return vertex.lerp(vertex + sample_offset, t)
