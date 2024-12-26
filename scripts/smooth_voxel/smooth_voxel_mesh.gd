@@ -444,3 +444,68 @@ func generate_collider(marching_cubes_data: Array) -> StaticBody3D:
 func create_double_sided_material() -> StandardMaterial3D:
 	var material = StandardMaterial3D.new()
 	return material
+
+
+func create_backface_material() -> ShaderMaterial:
+	var material = ShaderMaterial.new()
+	var shader = Shader.new()
+	shader.code = """
+	shader_type spatial;
+	render_mode unshaded, depth_draw_always;
+	
+	void vertex() {
+		VERTEX += NORMAL * 0.001; // Small offset in normal direction
+	}
+	
+	void fragment() {
+		ALBEDO = vec3(0.5, 0.5, 0.5); // Grey color, change as needed
+	}
+	"""
+	material.shader = shader
+	return material
+
+func generate_simple_cube_mesh(chunk_size: int) -> Mesh:
+	var chunk_size_real = chunk_size + 0.5
+	var mesh = ArrayMesh.new()
+	var st = SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+
+	var vertices = [
+		Vector3(0, 0, 0), 
+		Vector3(chunk_size_real, 0, 0), 
+		Vector3(chunk_size_real, chunk_size_real, 0), 
+		Vector3(0, chunk_size_real, 0),
+		Vector3(0, 0, chunk_size_real), 
+		Vector3(chunk_size_real, 0, chunk_size_real), 
+		Vector3(chunk_size_real, chunk_size_real, chunk_size_real), 
+		Vector3(0, chunk_size_real, chunk_size_real)
+	]
+
+	var indices = [
+		0, 1, 2, 2, 3, 0,  # Front
+		1, 5, 6, 6, 2, 1,  # Right
+		5, 4, 7, 7, 6, 5,  # Back
+		4, 0, 3, 3, 7, 4,  # Left
+		3, 2, 6, 6, 7, 3,  # Top
+		4, 5, 1, 1, 0, 4   # Bottom
+	]
+
+	for idx in indices:
+		st.add_vertex(vertices[idx])
+
+	st.generate_normals()
+	st.set_material(create_backface_material())
+	st.commit(mesh)
+
+	return mesh
+
+func generate_simple_cube_collider(chunk_size: int) -> StaticBody3D:
+	var chunk_size_real = chunk_size + 0.5
+	var static_body = StaticBody3D.new()
+	var collision_shape = CollisionShape3D.new()
+	var box_shape = BoxShape3D.new()
+	box_shape.extents = Vector3(chunk_size_real / 2.0, chunk_size_real / 2.0, chunk_size_real / 2.0)
+	collision_shape.shape = box_shape
+	collision_shape.position = Vector3(chunk_size_real / 2.0, chunk_size_real / 2.0, chunk_size_real / 2.0)
+	static_body.add_child(collision_shape)
+	return static_body

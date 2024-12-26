@@ -9,7 +9,7 @@ var should_exit_thread: bool = false
 
 var chunks = {}
 var chunk_size = 16
-var render_distance = 4
+var render_distance = 64
 
 var total_data_generation_time = 0.0
 var total_mesh_update_time = 0.0
@@ -72,9 +72,13 @@ func generate_next_chunk():
 func create_chunk(chunk_position: Vector3):
 	var chunk = SmoothVoxelChunk.new(chunk_size)
 	chunk.position = chunk_position * chunk_size
-	chunks[chunk_position] = chunk	
+	chunks[chunk_position] = chunk
 	add_child(chunk)
-	update_chunk_and_neighbors(chunk_position)
+	
+	var simple_mesh = chunk.mesh.generate_simple_cube_mesh(chunk_size)
+	var simple_collider = chunk.mesh.generate_simple_cube_collider(chunk_size)
+	chunk.call_deferred("_apply_mesh_and_collider", simple_mesh, simple_collider)
+
 
 func update_chunk_and_neighbors(chunk_position: Vector3):
 	var directions = [
@@ -209,6 +213,7 @@ func _perform_modification(hit_point: Vector3, radius: float, strength: float):
 									affected_chunks[chunk_pos] = true
 	
 	for chunk_pos in affected_chunks:
+		chunks[chunk_pos].is_modified = true
 		call_deferred("update_chunk_and_neighbors", chunk_pos)
 
 func _finalize_modification_thread():
