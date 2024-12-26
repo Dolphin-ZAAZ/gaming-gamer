@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://dovjkpj2x2xxq" path="res://scenes/box.tscn" id="2_fjo0c"]
 [ext_resource type="PackedScene" uid="uid://ew2rsis27pi7" path="res://scenes/player.tscn" id="2_k0p0j"]
-[ext_resource type="Script" path="res://scripts/rethink_voxel/Octree.gd" id="3_4mikp"]
+[ext_resource type="Script" path="res://scripts/rethink_voxel/octree.gd" id="3_q7hlc"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ykne6"]
 sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -50,14 +50,6 @@ transform = Transform3D(1.48585, 0, 0, 0, 1.48585, 0, 0, 0, 1.48585, -4.18978, 0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0726175, 58.6838, -0.0390997)
 
 [node name="AdaptiveMarchingCubes" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 281.771, 389.612, 370.349)
-script = ExtResource("3_4mikp")
-grid_size = 10000.0
-max_depth = 6
-noise_octaves = 4
-boundary_thickness = 0.01
-smoothing_factor = 0.05
-cave_noise_scale = 0.01
-cave_threshold = 0.5
-cave_sharpness = 5.0
-solid_threshold = 0.5
+script = ExtResource("3_q7hlc")
+chunk_type = "boulder"
+grid_size = 1000.0

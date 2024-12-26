@@ -4,16 +4,41 @@ extends Node3D
 var cube_tables: MarchingCubesTables
 var vertex_map: Dictionary = {}
 
+class OctreeCache:
+	var octree: Octree
+	var vertex_map: Dictionary
+
+	func _init(octree: Octree, vertex_map: Dictionary):
+		self.octree = octree
+		self.vertex_map = vertex_map
+
+	func modify_density(position: Vector3, value: float, radius: float):
+		modify_octree_recursive(octree, position, value, radius)
+
+	func modify_octree_recursive(node: Octree, position: Vector3, value: float, radius: float):
+		var distance = node.center.distance_to(position)
+		if distance > radius + node.size * 0.866:  # sqrt(3)/2
+			return
+		
+		var t = 1.0 - clamp(distance / radius, 0.0, 1.0)
+		node.modification += value * t
+		
+		if not node.children.is_empty():
+			for child in node.children:
+				modify_octree_recursive(child, position, value, radius)
+
 class Octree:
 	var center: Vector3
 	var size: float
 	var value: float
+	var modification: float
 	var children: Array[Octree]
 	
 	func _init(center: Vector3, size: float):
 		self.center = center
 		self.size = size
 		self.value = 0.0
+		self.modification = 0.0
 		self.children = []
 	
 	func subdivide():
@@ -28,7 +53,9 @@ class Octree:
 					var child_center = center + offset
 					children.append(Octree.new(child_center, half_size))
 
+var octree_cache: OctreeCache
 var root_octree: Octree
+@export var chunk_type: String = "ground"
 @export var collision_enabled: bool = true
 @export var iso_level: float = 0.5
 @export var grid_size: float = 10000.0
@@ -78,7 +105,7 @@ func subdivide_octree(node: Octree, depth: int):
 	if depth >= max_depth:
 		return
 	
-	node.value = boulder_density_function(node.center)
+	node.value = density_function(chunk_type, node.center)
 	
 	if should_subdivide(node):
 		node.subdivide()
@@ -88,6 +115,37 @@ func subdivide_octree(node: Octree, depth: int):
 func should_subdivide(node: Octree) -> bool:
 	return abs(node.value - iso_level) < node.size * 0.1
 
+
+func rectangular_prism_density_function(point: Vector3) -> float:
+	# Calculate distances from the center for each axis
+	var distance_x = abs(point.x) / (grid_size * 0.5)
+	var distance_y = abs(point.y) / (grid_size * 0.25)  # Make it shorter in Y-axis
+	var distance_z = abs(point.z) / (grid_size * 0.5)
+	
+	# Create smooth falloff towards the edges for each axis
+	var edge_falloff_x = smoothstep(0.7, 1.0, distance_x)
+	var edge_falloff_y = smoothstep(0.7, 1.0, distance_y)
+	var edge_falloff_z = smoothstep(0.7, 1.0, distance_z)
+	
+	# Combine falloffs
+	var edge_falloff = max(edge_falloff_x, max(edge_falloff_y, edge_falloff_z))
+	
+	# Create solid interior
+	var solid_interior = 1.0 if edge_falloff < 0.5 else -1.0
+	
+	# Cave noise
+	var cave_noise = noise.get_noise_3dv(point * cave_noise_scale) * 0.5 + 0.5
+	
+	# Create caves, but make them less frequent
+	var cave_value = smoothstep(cave_threshold + 0.2, cave_threshold + 0.3, cave_noise) * cave_sharpness * 0.7
+	
+	# Combine solid interior with cave structures
+	var combined_density = solid_interior - cave_value
+	
+	# Apply edge falloff
+	combined_density = lerp(combined_density, -1.0, edge_falloff)
+	
+	return combined_density
 
 func boulder_density_function(point: Vector3) -> float:
 	# Calculate distance from the center of the grid
@@ -114,6 +172,16 @@ func boulder_density_function(point: Vector3) -> float:
 	combined_density = lerp(combined_density, -1.0, 1.0 - edge_falloff)
 	
 	return combined_density
+
+
+func density_function(type: String, point: Vector3) -> float:
+	if type == "boulder":
+		return boulder_density_function(point)
+	elif type == "ground":
+		return rectangular_prism_density_function(point)
+	else:
+		return rectangular_prism_density_function(point)
+
 
 func generate_mesh_and_collider(collider_enabled: bool):
 	vertex_map.clear()
@@ -165,7 +233,7 @@ func generate_cube_mesh(node: Octree, st: SurfaceTool, collision_points: Array):
 	var corners = get_cube_corners(node)
 	var corner_values = []
 	for corner in corners:
-		corner_values.append(boulder_density_function(corner))
+		corner_values.append(density_function(chunk_type, corner))
 	
 	var cube_index = 0
 	for i in range(8):
@@ -248,11 +316,11 @@ func get_edge_key(v1: Vector3, v2: Vector3) -> String:
 func smooth_vertex_position(vertex: Vector3) -> Vector3:
 	var sample_offset = Vector3(0.1, 0.1, 0.1)
 	var samples = [
-		boulder_density_function(vertex + sample_offset),
-		boulder_density_function(vertex - sample_offset),
-		boulder_density_function(vertex + Vector3(sample_offset.x, -sample_offset.y, -sample_offset.z)),
-		boulder_density_function(vertex + Vector3(-sample_offset.x, sample_offset.y, -sample_offset.z)),
-		boulder_density_function(vertex + Vector3(-sample_offset.x, -sample_offset.y, sample_offset.z))
+		density_function(chunk_type, vertex + sample_offset),
+		density_function(chunk_type, vertex - sample_offset),
+		density_function(chunk_type, vertex + Vector3(sample_offset.x, -sample_offset.y, -sample_offset.z)),
+		density_function(chunk_type, vertex + Vector3(-sample_offset.x, sample_offset.y, -sample_offset.z)),
+		density_function(chunk_type, vertex + Vector3(-sample_offset.x, -sample_offset.y, sample_offset.z))
 	]
 	
 	var avg_sample = 0.0
@@ -260,6 +328,6 @@ func smooth_vertex_position(vertex: Vector3) -> Vector3:
 		avg_sample += sample
 	avg_sample /= samples.size()
 	
-	var smoothed_value = lerp(boulder_density_function(vertex), avg_sample, smoothing_factor)
-	var t = (iso_level - boulder_density_function(vertex)) / (smoothed_value - boulder_density_function(vertex))
+	var smoothed_value = lerp(density_function(chunk_type, vertex), avg_sample, smoothing_factor)
+	var t = (iso_level - density_function(chunk_type, vertex)) / (smoothed_value - density_function(chunk_type, vertex))
 	return vertex.lerp(vertex + sample_offset, t)

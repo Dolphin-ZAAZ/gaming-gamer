@@ -5,7 +5,7 @@ const JUMP_VELOCITY = 50.0
 
 var voxel_mesh: SmoothVoxelMesh
 var voxel_data: SmoothVoxelData
-var voxel_chunk: SmoothVoxelChunkManager
+var voxel_chunk: AdaptiveMarchingCubes
 
 # Get the gravity from the project settings to be synced with RigidDynamicBody nodes.
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
@@ -13,7 +13,7 @@ var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 @onready var camera := $Neck/Camera3D
 
 func _ready():
-	voxel_chunk = $"../SmoothVoxelChunkManager"
+	voxel_chunk = $"../AdaptiveMarchingCubes"
 	
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -63,4 +63,4 @@ func mine_at_position(screen_position: Vector2):
 	
 	if result:
 		var hit_point = result.position
-		voxel_chunk.modify_voxel_density(hit_point, 3, 1) 
+		voxel_chunk.modify_voxel_density(hit_point, 5, 100) 
