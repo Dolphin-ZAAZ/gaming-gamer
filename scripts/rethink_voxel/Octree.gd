@@ -2,6 +2,7 @@ class_name AdaptiveMarchingCubes
 extends Node3D
 
 var cube_tables: MarchingCubesTables
+var vertex_map: Dictionary = {}
 
 class Octree:
 	var center: Vector3
@@ -66,17 +67,18 @@ func should_subdivide(node: Octree) -> bool:
 
 func sample_density_function(point: Vector3) -> float:
 	var base_density = point.length() / grid_size
-	var noise_value = noise.get_noise_3dv(point * noise_scale) * grid_size * 0.2
+	var noise_value = noise.get_noise_3dv(point * noise_scale) * 0.5
 	return base_density + noise_value
 
 func generate_mesh():
+	vertex_map.clear()
 	var st = SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	
 	process_octree(root_octree, st)
 	
 	st.generate_normals()
-	st.index()  # Add this line to optimize the mesh
+	st.index()
 	var mesh = st.commit()
 	var mesh_instance = MeshInstance3D.new()
 	mesh.surface_set_material(0, create_double_sided_material())
@@ -107,34 +109,25 @@ func generate_cube_mesh(node: Octree, st: SurfaceTool):
 		corner_values.append(sample_density_function(corner))
 	
 	print("Corner values: ", corner_values)
-	
 	var cube_index = 0
 	for i in range(8):
 		if corner_values[i] < iso_level:
 			cube_index |= 1 << i
-	
-	print("Cube index: ", cube_index)
-	
 	if cube_index == 0 or cube_index == 255:
-		print("Skipping cube - all inside or all outside")
 		return
 	
 	var edge_mask = cube_tables.EDGE_TABLE[cube_index]
 	var triangles = cube_tables.TRIANGLE_TABLE[cube_index]
-	print("Triangles: ", triangles)
 	
 	for i in range(0, triangles.size(), 3):
 		if triangles[i] == -1:
 			break
 		
-		var a = interpolate_vertex(corners, corner_values, cube_tables.EDGE_CONNECTIONS[triangles[i] * 2], cube_tables.EDGE_CONNECTIONS[triangles[i] * 2 + 1])
-		var b = interpolate_vertex(corners, corner_values, cube_tables.EDGE_CONNECTIONS[triangles[i+1] * 2], cube_tables.EDGE_CONNECTIONS[triangles[i+1] * 2 + 1])
-		var c = interpolate_vertex(corners, corner_values, cube_tables.EDGE_CONNECTIONS[triangles[i+2] * 2], cube_tables.EDGE_CONNECTIONS[triangles[i+2] * 2 + 1])
+		var a = get_interpolated_vertex(corners, corner_values, cube_tables.EDGE_CONNECTIONS[triangles[i] * 2], cube_tables.EDGE_CONNECTIONS[triangles[i] * 2 + 1])
+		var b = get_interpolated_vertex(corners, corner_values, cube_tables.EDGE_CONNECTIONS[triangles[i+1] * 2], cube_tables.EDGE_CONNECTIONS[triangles[i+1] * 2 + 1])
+		var c = get_interpolated_vertex(corners, corner_values, cube_tables.EDGE_CONNECTIONS[triangles[i+2] * 2], cube_tables.EDGE_CONNECTIONS[triangles[i+2] * 2 + 1])
 
 		var normal = (b - a).cross(c - a).normalized()
-
-		print("Normal: ", normal)
-		print("Vertices: ", a, b, c)
 
 		st.set_normal(normal)
 		st.add_vertex(a)
@@ -156,7 +149,7 @@ func interpolate_vertex(corners: Array, values: Array, index1: int, index2: int)
 
 func _input(event):
 	if event is InputEventKey and event.pressed:
-		if event.keycode == KEY_SPACE:
+		if event.keycode == KEY_0:
 			regenerate_mesh()
 
 func regenerate_mesh():
@@ -168,3 +161,18 @@ func regenerate_mesh():
 	root_octree = Octree.new(Vector3.ZERO, grid_size)
 	generate_adaptive_volume()
 	generate_mesh()
+
+func get_interpolated_vertex(corners: Array, values: Array, index1: int, index2: int) -> Vector3:
+	var edge_key = get_edge_key(corners[index1], corners[index2])
+	if edge_key in vertex_map:
+		return vertex_map[edge_key]
+	
+	var t = (iso_level - values[index1]) / (values[index2] - values[index1])
+	var vertex = corners[index1].lerp(corners[index2], t)
+	vertex_map[edge_key] = vertex
+	return vertex
+
+func get_edge_key(v1: Vector3, v2: Vector3) -> String:
+	var rounded_v1 = Vector3(snapped(v1.x, 0.001), snapped(v1.y, 0.001), snapped(v1.z, 0.001))
+	var rounded_v2 = Vector3(snapped(v2.x, 0.001), snapped(v2.y, 0.001), snapped(v2.z, 0.001))
+	return "%s-%s" % [rounded_v1, rounded_v2] if rounded_v1 < rounded_v2 else "%s-%s" % [rounded_v2, rounded_v1]

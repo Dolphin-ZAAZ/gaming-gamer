@@ -50,8 +50,7 @@ transform = Transform3D(1.48585, 0, 0, 0, 1.48585, 0, 0, 0, 1.48585, -4.18978, 0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0726175, 58.6838, -0.0390997)
 
 [node name="AdaptiveMarchingCubes" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 59.4064, 62.6466)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -50.9063)
 script = ExtResource("3_4mikp")
-iso_level = 4.66
+iso_level = 0.5
 grid_size = 1000.0
-noise_scale = 0.2
