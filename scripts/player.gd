@@ -1,11 +1,11 @@
 extends CharacterBody3D
 
-const SPEED = 1000.0
-const JUMP_VELOCITY = 50.0
+const SPEED = 100.0
+const JUMP_VELOCITY = 35.0
 
 var voxel_mesh: SmoothVoxelMesh
 var voxel_data: SmoothVoxelData
-var voxel_chunk: SmoothVoxelChunkManager
+var voxel_chunk: AdaptiveMarchingCubes
 
 # Get the gravity from the project settings to be synced with RigidDynamicBody nodes.
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
@@ -13,11 +13,14 @@ var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 @onready var camera := $Neck/Camera3D
 
 func _ready():
-	voxel_chunk = $"../SmoothVoxelChunkManager"
+	voxel_chunk = $"../AdaptiveMarchingCubes"
 	
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		mine_at_position(event.position)
+	if event is InputEventKey and event.pressed:
+		if event.keycode == KEY_0:
+			print(str(get_player_pos()))
 	if event is InputEventMouseButton:
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	elif event.is_action_pressed("ui_cancel"):
@@ -28,7 +31,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			camera.rotate_x(-event.relative.y * 0.01)
 			camera.rotation.x = clamp(camera.rotation.x, deg_to_rad(-60), deg_to_rad(60))
 
-
+func get_player_pos() -> Vector3:
+	return Vector3(position.x, position.y, position.z)
 func _physics_process(delta: float) -> void:
 	# Add the gravity.
 	if not is_on_floor():
@@ -63,4 +67,4 @@ func mine_at_position(screen_position: Vector2):
 	
 	if result:
 		var hit_point = result.position
-		voxel_chunk.modify_voxel_density(hit_point, 3, 1) 
+		voxel_chunk.modify_density_function(hit_point, 50, 2) 
