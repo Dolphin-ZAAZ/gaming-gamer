@@ -51,4 +51,16 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0726175, 58.6838, -0.03909
 
 [node name="AdaptiveMarchingCubes" type="Node3D" parent="."]
 script = ExtResource("3_q7hlc")
-chunk_type = "boulder"
+chunk_type = null
+collision_enabled = null
+iso_level = null
+grid_size = 300.0
+max_depth = null
+noise_scale = null
+noise_frequency = null
+noise_octaves = null
+smoothing_factor = null
+cave_noise_scale = null
+cave_threshold = null
+cave_sharpness = null
+solid_threshold = null

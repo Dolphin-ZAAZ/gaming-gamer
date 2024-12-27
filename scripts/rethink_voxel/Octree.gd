@@ -4,67 +4,6 @@ extends Node3D
 var cube_tables: MarchingCubesTables
 var vertex_map: Dictionary = {}
 
-class OctreeCache:
-	var octree: Octree
-	var vertex_map: Dictionary
-	var adaptive_marching_cubes: AdaptiveMarchingCubes
-
-	func _init(octree: Octree, vertex_map: Dictionary, adaptive_marching_cubes: AdaptiveMarchingCubes):
-		self.octree = octree
-		self.vertex_map = vertex_map
-		self.adaptive_marching_cubes = adaptive_marching_cubes
-
-	func modify_density(position: Vector3, value: float, radius: float):
-		var affected_nodes = []
-		modify_octree_recursive(octree, position, value, radius, affected_nodes)
-
-		var st = SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		var collision_points = []
-
-		for node in affected_nodes:
-			adaptive_marching_cubes.generate_cube_mesh(node, st, collision_points)
-
-		st.generate_normals()
-		st.index()
-		var mesh = st.commit()
-
-		#Remove the old mesh if it exist and create a new one.
-		for child in adaptive_marching_cubes.get_children():
-			if child is MeshInstance3D or child is StaticBody3D:
-				child.queue_free()
-		
-		var mesh_instance = MeshInstance3D.new()
-		mesh.surface_set_material(0, adaptive_marching_cubes.create_double_sided_material())
-		mesh_instance.mesh = mesh
-		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		adaptive_marching_cubes.add_child(mesh_instance)
-		mesh_instance.position = -Vector3(adaptive_marching_cubes.grid_size, adaptive_marching_cubes.grid_size, adaptive_marching_cubes.grid_size) * 0.5
-
-		# Generate collision shape
-		var collision_shape = CollisionShape3D.new()
-		var concave_polygon_shape = ConcavePolygonShape3D.new()
-		concave_polygon_shape.set_faces(collision_points)
-		collision_shape.shape = concave_polygon_shape
-
-		var static_body = StaticBody3D.new()
-		static_body.add_child(collision_shape)
-		adaptive_marching_cubes.add_child(static_body)
-		static_body.position = mesh_instance.position
-
-	func modify_octree_recursive(node: Octree, position: Vector3, value: float, radius: float, affected_nodes: Array):
-		var distance = node.center.distance_to(position)
-		if distance > radius + node.size * 0.866:  # sqrt(3)/2
-			return
-
-		var t = 1.0 - clamp(distance / radius, 0.0, 1.0)
-		node.value += value * t
-		affected_nodes.append(node)
-
-		if not node.children.is_empty():
-			for child in node.children:
-				modify_octree_recursive(child, position, value, radius, affected_nodes)
-
 class Octree:
 	var center: Vector3
 	var size: float
@@ -91,7 +30,6 @@ class Octree:
 					var child_center = center + offset
 					children.append(Octree.new(child_center, half_size))
 
-var octree_cache: OctreeCache
 var root_octree: Octree
 @export var chunk_type: String = "ground"
 @export var collision_enabled: bool = true
@@ -121,6 +59,7 @@ func _ready():
 	root_octree = Octree.new(Vector3.ZERO, grid_size)
 	generate_adaptive_volume()
 	generate_mesh_and_collider(collision_enabled)
+
 
 func world_to_octree_space(world_position: Vector3) -> Vector3:
 	var octree_position = world_position + Vector3(grid_size, grid_size, grid_size) * 0.5
@@ -165,10 +104,6 @@ func refine_node(node: Octree, octree_position: Vector3):
 		node.subdivide()
 		for child in node.children:
 			refine_node(child, octree_position)
-
-
-func create_octree_cache() -> OctreeCache:
-	return OctreeCache.new(root_octree, vertex_map, self)
 
 func generate_adaptive_volume():
 	subdivide_octree(root_octree, 0)
@@ -261,13 +196,21 @@ func boulder_density_function(point: Vector3) -> float:
 
 
 func density_function(type: String, point: Vector3) -> float:
+	var node = find_node_containing_point(root_octree, point)
+	if node != null:
+		var base_density = rectangular_prism_density_function(point)
+		if node.modification != 0:
+			print("modification density"+ str(node.modification))
+			print("new density" + str(base_density+node.modification))
+		return base_density + node.modification
 	if type == "boulder":
+		print(str(boulder_density_function(point)))
 		return boulder_density_function(point)
 	elif type == "ground":
+		print(str(rectangular_prism_density_function(point)))
 		return rectangular_prism_density_function(point)
 	else:
 		return rectangular_prism_density_function(point)
-
 
 func generate_mesh_and_collider(collider_enabled: bool):
 	vertex_map.clear()
@@ -285,7 +228,6 @@ func generate_mesh_and_collider(collider_enabled: bool):
 	mesh.surface_set_material(0, create_double_sided_material())
 	mesh_instance.mesh = mesh
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	print("Vertex Count: ", mesh.get_surface_count())
 	add_child(mesh_instance)
 
 	mesh_instance.position = -Vector3(grid_size, grid_size, grid_size) * 0.5
@@ -314,7 +256,6 @@ func process_octree(node: Octree, st: SurfaceTool, collision_points: Array):
 		for child in node.children:
 			process_octree(child, st, collision_points)
 
-
 func generate_cube_mesh(node: Octree, st: SurfaceTool, collision_points: Array):
 	var corners = get_cube_corners(node)
 	var corner_values = []
@@ -327,8 +268,7 @@ func generate_cube_mesh(node: Octree, st: SurfaceTool, collision_points: Array):
 			cube_index |= 1 << i
 	if cube_index == 0 or cube_index == 255:
 		return
-	
-	var edge_mask = cube_tables.EDGE_TABLE[cube_index]
+
 	var triangles = cube_tables.TRIANGLE_TABLE[cube_index]
 	
 	for i in range(0, triangles.size(), 3):
@@ -359,7 +299,6 @@ func generate_cube_mesh(node: Octree, st: SurfaceTool, collision_points: Array):
 
 func get_cube_corners(node: Octree) -> Array:
 	var corners = []
-	var half_size = node.size * 0.5
 	for offset in cube_tables.EDGE_VERTEXT_OFFSETS:
 		corners.append(node.center + (offset - Vector3(0.5, 0.5, 0.5)) * node.size)
 	return corners
@@ -378,9 +317,6 @@ func regenerate_mesh():
 		if child is MeshInstance3D or child is StaticBody3D:
 			child.queue_free()
 	
-	noise.seed = randi()
-	root_octree = Octree.new(Vector3.ZERO, grid_size)
-	generate_adaptive_volume()
 	generate_mesh_and_collider(collision_enabled)
 
 func get_interpolated_vertex(corners: Array, values: Array, index1: int, index2: int) -> Vector3:
@@ -397,3 +333,76 @@ func get_edge_key(v1: Vector3, v2: Vector3) -> String:
 	var rounded_v1 = Vector3(snapped(v1.x, 0.001), snapped(v1.y, 0.001), snapped(v1.z, 0.001))
 	var rounded_v2 = Vector3(snapped(v2.x, 0.001), snapped(v2.y, 0.001), snapped(v2.z, 0.001))
 	return "%s-%s" % [rounded_v1, rounded_v2] if rounded_v1 < rounded_v2 else "%s-%s" % [rounded_v2, rounded_v1]
+
+func intersects_sphere(node: Octree, center: Vector3, radius: float) -> bool:
+	# Calculate the min and max bounds of the node's bounding box
+	var min_bounds = node.center - Vector3.ONE * node.size * 0.5
+	var max_bounds = node.center + Vector3.ONE * node.size * 0.5
+
+	# Calculate the closest point on the node's bounding box to the sphere's center
+	var closest_point = center.clamp(min_bounds, max_bounds)
+	# Calculate the squared distance between the closest point and the sphere's center
+	var distance_squared = closest_point.distance_squared_to(center)
+	
+	# Calculate the sphere's radius squared for comparison
+	var radius_squared = radius * radius
+
+	# Check if this distance is less than or equal to the sphere's radius squared
+	var intersects = distance_squared <= radius_squared
+	print("Does the node intersect the sphere? ", intersects)
+	
+	return intersects
+
+func modify_octree(node: Octree, center: Vector3, radius: float, strength: float):
+	# Check sphere intersection and print relevant information
+	if not intersects_sphere(node, center, radius):
+		return
+	print("Node at ", node.center, " with size ", node.size, " intersects sphere centered at ", center, " with radius ", radius)
+
+	# Subdivide if necessary and print the subdivision action
+	if node.children.is_empty() and node.size > 1:
+		print("Subdividing node at ", node.center, " with size ", node.size)
+		node.subdivide()
+
+	# Modify leaf node or recurse for children
+	if node.children.is_empty():
+
+		node.modification -= strength
+		print("New modification value for node at ", node.center, ": ", node.modification)
+	else:
+		# Non-leaf node, recurse into each child
+		print("Non-leaf node at ", node.center, " with size ", node.size, ", processing children.")
+		for child in node.children:
+			modify_octree(child, center, radius, strength)
+
+# func intersects_sphere(node: Octree, center: Vector3, radius: float) -> bool:
+# 	# Calculate the closest point on the node's bounding box to the sphere's center
+# 	var closest_point = node.center.clamp(
+# 		node.center - Vector3.ONE * node.size * 0.5,
+# 		node.center + Vector3.ONE * node.size * 0.5
+# 	)
+	
+# 	# Calculate the squared distance between the closest point and the sphere's center
+# 	var distance_squared = closest_point.distance_squared_to(center)
+	
+# 	# Check if this distance is less than or equal to the sphere's radius squared
+# 	return distance_squared <= radius * radius
+
+# func modify_octree(node: Octree, center: Vector3, radius: float, strength: float):
+# 	if not intersects_sphere(node, center, radius):
+# 		return
+
+# 	if node.children.is_empty() and node.size > 1:
+# 		node.subdivide()
+
+# 	if node.children.is_empty():
+# 		var distance = node.center.distance_to(center)
+# 		node.modification -= strength
+# 	else:
+# 		# Non-leaf node, recurse
+# 		for child in node.children:
+# 			modify_octree(child, center, radius, strength)
+
+func carve_sphere(center: Vector3, radius: float, strength: float):
+	modify_octree(root_octree, center, radius, strength)
+	regenerate_mesh()

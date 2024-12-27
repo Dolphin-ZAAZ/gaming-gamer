@@ -1,7 +1,7 @@
 extends CharacterBody3D
 
 const SPEED = 100.0
-const JUMP_VELOCITY = 50.0
+const JUMP_VELOCITY = 20.0
 
 var voxel_mesh: SmoothVoxelMesh
 var voxel_data: SmoothVoxelData
@@ -61,6 +61,4 @@ func mine_at_position(screen_position: Vector2):
 
 	if result:
 		var hit_point = result.position
-		var octree_position = voxel_chunk.world_to_octree_space(hit_point)
-		var octree_cache = voxel_chunk.create_octree_cache()
-		octree_cache.modify_density(octree_position, -0.005, 0.1)
+		voxel_chunk.carve_sphere(hit_point, 10.0, 1.0)
