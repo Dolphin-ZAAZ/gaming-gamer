@@ -61,7 +61,6 @@ var root_octree: Octree
 
 @export var remove_region_center: Vector3 
 @export var remove_region_radius: float
-@export var remove_region_position: Vector3
 
 @export var min_voxel_size : Vector3 = Vector3(1, 1, 1)
 var voxel_space_origin : Vector3 = Vector3.ZERO
@@ -81,7 +80,7 @@ func _ready():
 func mine(point: Vector3, radius: float):
 	remove_region_center = point
 	remove_region_radius = radius
-	print("center: " + str(remove_region_center) + " point: " + str(point))
+	print("center: " + str(remove_region_center))
 	generate_terrain()
 	
 func generate_terrain():
@@ -145,11 +144,12 @@ func boulder_density_function(point: Vector3) -> float:
 	# Apply edge falloff
 	combined_density = lerp(combined_density, -1.0, 1.0 - edge_falloff)
 
-	# Calculate removal
-	if (point - remove_region_center).length() < remove_region_radius:
-		print(str((point - remove_region_center).length()))
-		return -1.0  # Assuming negative values are outside the surface
-
+	# Calculate removal if overlapping
+	var distance_to_remove_center = point.distance_to(remove_region_center)
+	if distance_to_remove_center <= remove_region_radius:
+		print(distance_to_remove_center)
+		combined_density -= 1.0
+		print("combined density" + str(combined_density))
 	return combined_density
 
 func generate_mesh_and_collider(collider_enabled: bool):
@@ -170,7 +170,7 @@ func generate_mesh_and_collider(collider_enabled: bool):
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	add_child(mesh_instance)
 
-	mesh_instance.position = -Vector3(grid_size, grid_size, grid_size) * 0.5
+	mesh_instance.position = Vector3(0, 0, 0)
 
 	if collider_enabled:
 		# Generate collision shap

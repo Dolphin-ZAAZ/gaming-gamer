@@ -29,28 +29,27 @@ light_energy = 0.677
 shadow_enabled = true
 
 [node name="Box" parent="." instance=ExtResource("2_fjo0c")]
-transform = Transform3D(15.8143, 0, 0, 0, 1, 0, 0, 0, 20.137, -0.0553904, 0, -0.0449762)
+transform = Transform3D(15.8143, 0, 0, 0, 1, 0, 0, 0, 20.137, -345.183, 66.4535, -0.0449762)
 
 [node name="Box2" parent="." instance=ExtResource("2_fjo0c")]
-transform = Transform3D(3.71462, 0, 0, 0, 3.71462, 0, 0, 0, 3.71462, 4.1093, 0.958821, -7.07035)
+transform = Transform3D(3.71462, 0, 0, 0, 3.71462, 0, 0, 0, 3.71462, -341.018, 67.4123, -7.07035)
 
 [node name="Box3" parent="." instance=ExtResource("2_fjo0c")]
-transform = Transform3D(3.71462, 0, 0, 0, 3.71462, 0, 0, 0, 3.71462, 5.1093, 0.958821, 6.92965)
+transform = Transform3D(3.71462, 0, 0, 0, 3.71462, 0, 0, 0, 3.71462, -340.018, 67.4123, 6.92965)
 
 [node name="Box4" parent="." instance=ExtResource("2_fjo0c")]
-transform = Transform3D(1.48585, 0, 0, 0, 1.48585, 0, 0, 0, 1.48585, -3.52427, 0.958821, -6.6246)
+transform = Transform3D(1.48585, 0, 0, 0, 1.48585, 0, 0, 0, 1.48585, -348.652, 67.4123, -6.6246)
 
 [node name="Box5" parent="." instance=ExtResource("2_fjo0c")]
-transform = Transform3D(1.48585, 0, 0, 0, 1.48585, 0, 0, 0, 1.48585, -0.00811958, 1.10506, 8.26931)
+transform = Transform3D(1.48585, 0, 0, 0, 1.48585, 0, 0, 0, 1.48585, -345.136, 67.5586, 8.26931)
 
 [node name="Box6" parent="." instance=ExtResource("2_fjo0c")]
-transform = Transform3D(1.48585, 0, 0, 0, 1.48585, 0, 0, 0, 1.48585, -4.18978, 0.958821, 6.80827)
+transform = Transform3D(1.48585, 0, 0, 0, 1.48585, 0, 0, 0, 1.48585, -349.317, 67.4123, 6.80827)
 
 [node name="Player" parent="." instance=ExtResource("2_k0p0j")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0726175, 58.6838, -0.0390997)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -344.615, 77.3783, -0.0390997)
 
 [node name="AdaptiveMarchingCubes" type="Node3D" parent="." groups=["terrain"]]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 281.771, 389.612, 370.349)
 script = ExtResource("3_4mikp")
 grid_size = 1000.0
 max_depth = 5
