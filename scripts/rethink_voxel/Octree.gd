@@ -9,13 +9,17 @@ class Octree:
 	var size: float
 	var value: float
 	var children: Array[Octree]
+	var corner_values: Array[float]
+	var cube_tables: MarchingCubesTables
 	
 	func _init(center: Vector3, size: float):
 		self.center = center
 		self.size = size
 		self.value = 0.0
 		self.children = []
-	
+		self.corner_values = []
+		self.cube_tables = MarchingCubesTables.new()
+
 	func subdivide():
 		if not children.is_empty():
 			return
@@ -27,6 +31,18 @@ class Octree:
 					var offset = Vector3(x, y, z) * half_size * 0.5
 					var child_center = center + offset
 					children.append(Octree.new(child_center, half_size))
+	
+	func calculate_corner_values(density_func: Callable):
+		corner_values.clear()
+		var corners = get_cube_corners()
+		for corner in corners:
+			corner_values.append(density_func.call(corner))
+	
+	func get_cube_corners() -> Array:
+		var corners = []
+		for offset in cube_tables.EDGE_VERTEXT_OFFSETS:
+			corners.append(center + (offset - Vector3(0.5, 0.5, 0.5)) * size)
+		return corners
 
 var root_octree: Octree
 @export var collision_enabled: bool = true
@@ -43,6 +59,13 @@ var root_octree: Octree
 @export var cave_sharpness: float = 5.0
 @export var solid_threshold: float = 0.5
 
+@export var remove_region_center: Vector3 
+@export var remove_region_radius: float
+@export var remove_region_position: Vector3
+
+@export var min_voxel_size : Vector3 = Vector3(1, 1, 1)
+var voxel_space_origin : Vector3 = Vector3.ZERO
+
 var noise: FastNoiseLite
 
 func _ready():
@@ -53,9 +76,18 @@ func _ready():
 	
 	cube_tables = MarchingCubesTables.new()
 	
+	generate_terrain()
+
+func mine(point: Vector3, radius: float):
+	remove_region_center = point
+	remove_region_radius = radius
+	print("center: " + str(remove_region_center) + " point: " + str(point))
+	generate_terrain()
+	
+func generate_terrain():
 	root_octree = Octree.new(Vector3.ZERO, grid_size)
 	generate_adaptive_volume()
-	generate_mesh_and_collider(collision_enabled)
+	regenerate_mesh()
 
 func generate_adaptive_volume():
 	subdivide_octree(root_octree, 0)
@@ -112,7 +144,12 @@ func boulder_density_function(point: Vector3) -> float:
 	
 	# Apply edge falloff
 	combined_density = lerp(combined_density, -1.0, 1.0 - edge_falloff)
-	
+
+	# Calculate removal
+	if (point - remove_region_center).length() < remove_region_radius:
+		print(str((point - remove_region_center).length()))
+		return -1.0  # Assuming negative values are outside the surface
+
 	return combined_density
 
 func generate_mesh_and_collider(collider_enabled: bool):
@@ -159,12 +196,11 @@ func process_octree(node: Octree, st: SurfaceTool, collision_points: Array):
 		for child in node.children:
 			process_octree(child, st, collision_points)
 
-
 func generate_cube_mesh(node: Octree, st: SurfaceTool, collision_points: Array):
-	var corners = get_cube_corners(node)
-	var corner_values = []
+	var corners = node.get_cube_corners()
+	var corner_values = node.corner_values
 	for corner in corners:
-		corner_values.append(boulder_density_function(corner))
+		corner_values.append(boulder_density_function(corner))   
 	
 	var cube_index = 0
 	for i in range(8):
@@ -209,6 +245,8 @@ func get_cube_corners(node: Octree) -> Array:
 
 func _input(event):
 	if event is InputEventKey and event.pressed:
+		if event.keycode == KEY_R:
+			regenerate_with_removal()
 		if event.keycode == KEY_0:
 			regenerate_mesh()
 
@@ -233,3 +271,8 @@ func get_edge_key(v1: Vector3, v2: Vector3) -> String:
 	var rounded_v1 = Vector3(snapped(v1.x, 0.001), snapped(v1.y, 0.001), snapped(v1.z, 0.001))
 	var rounded_v2 = Vector3(snapped(v2.x, 0.001), snapped(v2.y, 0.001), snapped(v2.z, 0.001))
 	return "%s-%s" % [rounded_v1, rounded_v2] if rounded_v1 < rounded_v2 else "%s-%s" % [rounded_v2, rounded_v1]
+
+func regenerate_with_removal():
+	root_octree = Octree.new(Vector3.ZERO, grid_size)  # recreate the root to reset
+	generate_adaptive_volume()  # recreate the volume data
+	generate_mesh_and_collider(collision_enabled)  # recreate the mesh and collider

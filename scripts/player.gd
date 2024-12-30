@@ -1,7 +1,7 @@
 extends CharacterBody3D
 
-const SPEED = 100.0
-const JUMP_VELOCITY = 35.0
+var SPEED = 50.0
+var JUMP_VELOCITY = 30.0
 
 var voxel_mesh: SmoothVoxelMesh
 var voxel_data: SmoothVoxelData
@@ -18,9 +18,6 @@ func _ready():
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		mine_at_position(event.position)
-	if event is InputEventKey and event.pressed:
-		if event.keycode == KEY_0:
-			print(str(get_player_pos()))
 	if event is InputEventMouseButton:
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	elif event.is_action_pressed("ui_cancel"):
@@ -67,4 +64,5 @@ func mine_at_position(screen_position: Vector2):
 	
 	if result:
 		var hit_point = result.position
-		voxel_chunk.modify_density_function(hit_point, 50, 2) 
+		voxel_chunk.mine(hit_point, 1.0)
+	
