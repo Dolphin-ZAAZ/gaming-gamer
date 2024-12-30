@@ -63,26 +63,50 @@ var root_octree: Octree
 @export var remove_region_radius: float
 
 @export var min_voxel_size : Vector3 = Vector3(1, 1, 1)
+
+var mining_operations: Array = []
+
 var voxel_space_origin : Vector3 = Vector3.ZERO
 
 var noise: FastNoiseLite
 
 func _ready():
-	noise = FastNoiseLite.new()
-	noise.noise_type = FastNoiseLite.TYPE_PERLIN
-	noise.seed = randi()
-	noise.frequency = noise_frequency
-	
-	cube_tables = MarchingCubesTables.new()
-	
-	generate_terrain()
+	create_new_terrain()
 
 func mine(point: Vector3, radius: float):
+	mining_operations.append({"point": point, "radius": radius})
+	
 	remove_region_center = point
 	remove_region_radius = radius
-	print("center: " + str(remove_region_center))
-	generate_terrain()
 	
+	# Subdivide affected octree nodes
+	subdivide_affected_region(root_octree, point, radius)
+
+	#add normal calculationc to not just do a region but specifically a regoin within the surface
+	
+	# Apply removal and regenerate mesh
+	generate_terrain()
+
+func subdivide_affected_region(node: Octree, point: Vector3, radius: float):
+	# Check if this node intersects with the removal sphere
+	if node.center.distance_to(point) <= radius + node.size * sqrt(3) / 2:
+		# If we're not at max depth, subdivide
+		if node.children.is_empty() and node.size > min_voxel_size.x:  # Assuming cubic voxels
+			node.subdivide()
+			for child in node.children:
+				subdivide_affected_region(child, point, radius)
+		else:
+			# If we're at max depth or already subdivided, recalculate the value
+			node.value = boulder_density_function(node.center)
+			if not node.children.is_empty():
+				for child in node.children:
+					subdivide_affected_region(child, point, radius)
+	
+func regenerate_terrain():
+	root_octree = Octree.new(Vector3.ZERO, grid_size)
+	generate_adaptive_volume()
+	regenerate_mesh()
+
 func generate_terrain():
 	root_octree = Octree.new(Vector3.ZERO, grid_size)
 	generate_adaptive_volume()
@@ -145,11 +169,11 @@ func boulder_density_function(point: Vector3) -> float:
 	combined_density = lerp(combined_density, -1.0, 1.0 - edge_falloff)
 
 	# Calculate removal if overlapping
-	var distance_to_remove_center = point.distance_to(remove_region_center)
-	if distance_to_remove_center <= remove_region_radius:
-		print(distance_to_remove_center)
-		combined_density -= 1.0
-		print("combined density" + str(combined_density))
+	for operation in mining_operations:
+		var distance_to_remove_center = point.distance_to(operation.point)
+		if distance_to_remove_center <= operation.radius:
+			combined_density -= 1.0
+
 	return combined_density
 
 func generate_mesh_and_collider(collider_enabled: bool):
@@ -173,7 +197,6 @@ func generate_mesh_and_collider(collider_enabled: bool):
 	mesh_instance.position = Vector3(0, 0, 0)
 
 	if collider_enabled:
-		# Generate collision shap
 		var collision_shape = CollisionShape3D.new()
 		var concave_polygon_shape = ConcavePolygonShape3D.new()
 		concave_polygon_shape.set_faces(collision_points)
@@ -245,10 +268,12 @@ func get_cube_corners(node: Octree) -> Array:
 
 func _input(event):
 	if event is InputEventKey and event.pressed:
-		if event.keycode == KEY_R:
-			regenerate_with_removal()
 		if event.keycode == KEY_0:
-			regenerate_mesh()
+			regenerate_terrain()
+		elif event.keycode == KEY_9:
+			reset_terrain()
+		elif event.keycode == KEY_8:
+			create_new_terrain()
 
 func regenerate_mesh():
 	for child in get_children():
@@ -272,7 +297,16 @@ func get_edge_key(v1: Vector3, v2: Vector3) -> String:
 	var rounded_v2 = Vector3(snapped(v2.x, 0.001), snapped(v2.y, 0.001), snapped(v2.z, 0.001))
 	return "%s-%s" % [rounded_v1, rounded_v2] if rounded_v1 < rounded_v2 else "%s-%s" % [rounded_v2, rounded_v1]
 
-func regenerate_with_removal():
-	root_octree = Octree.new(Vector3.ZERO, grid_size)  # recreate the root to reset
-	generate_adaptive_volume()  # recreate the volume data
-	generate_mesh_and_collider(collision_enabled)  # recreate the mesh and collider
+func reset_terrain():
+	mining_operations.clear()
+	regenerate_terrain()
+
+func create_new_terrain():
+	noise = FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_PERLIN
+	noise.seed = randi()
+	noise.frequency = noise_frequency
+	
+	cube_tables = MarchingCubesTables.new()
+	
+	generate_terrain()

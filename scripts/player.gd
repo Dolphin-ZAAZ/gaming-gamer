@@ -64,5 +64,5 @@ func mine_at_position(screen_position: Vector2):
 	
 	if result:
 		var hit_point = result.position
-		voxel_chunk.mine(hit_point, 10.0)
+		voxel_chunk.mine(hit_point, 15.0)
 	

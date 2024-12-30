@@ -51,5 +51,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -344.615, 77.3783, -0.0390997
 
 [node name="AdaptiveMarchingCubes" type="Node3D" parent="." groups=["terrain"]]
 script = ExtResource("3_4mikp")
-grid_size = 1000.0
-max_depth = 5
+grid_size = 512.0
