@@ -54,7 +54,7 @@ func _physics_process(delta: float) -> void:
 
 # Add this function to handle mining
 func mine_at_position(screen_position: Vector2):
-	var ray_length = 1000
+	var ray_length = 10000
 	var from = camera.project_ray_origin(screen_position)
 	var to = from + camera.project_ray_normal(screen_position) * ray_length
 	

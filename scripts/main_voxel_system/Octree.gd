@@ -4,46 +4,6 @@ extends Node3D
 var cube_tables: MarchingCubesTables
 var vertex_map: Dictionary = {}
 
-class Octree:
-	var center: Vector3
-	var size: float
-	var value: float
-	var children: Array[Octree]
-	var corner_values: Array[float]
-	var cube_tables: MarchingCubesTables
-	
-	func _init(center: Vector3, size: float):
-		self.center = center
-		self.size = size
-		self.value = 0.0
-		self.children = []
-		self.corner_values = []
-		self.cube_tables = MarchingCubesTables.new()
-
-	func subdivide():
-		if not children.is_empty():
-			return
-		
-		var half_size = size / 2.0
-		for x in [-1, 1]:
-			for y in [-1, 1]:
-				for z in [-1, 1]:
-					var offset = Vector3(x, y, z) * half_size * 0.5
-					var child_center = center + offset
-					children.append(Octree.new(child_center, half_size))
-	
-	func calculate_corner_values(density_func: Callable):
-		corner_values.clear()
-		var corners = get_cube_corners()
-		for corner in corners:
-			corner_values.append(density_func.call(corner))
-	
-	func get_cube_corners() -> Array:
-		var corners = []
-		for offset in cube_tables.EDGE_VERTEXT_OFFSETS:
-			corners.append(center + (offset - Vector3(0.5, 0.5, 0.5)) * size)
-		return corners
-
 var root_octree: Octree
 @export var collision_enabled: bool = true
 @export var iso_level: float = 0.5
@@ -76,12 +36,15 @@ var collisider_time: float = 0.0
 var subdivide_time: float = 0.0
 var total_time: float = 0.0
 var click_amount: int = 0
+var affect_count: int = 0
+var density_time: float = 0.0
 
 func _ready():
 	create_new_terrain()
 
 func mine(point: Vector3, radius: float):
 	click_amount += 1
+	affect_count = 0
 	mining_operations.append({"point": point, "radius": radius})
 	
 	remove_region_center = point
@@ -90,31 +53,12 @@ func mine(point: Vector3, radius: float):
 	# Subdivide affected octree nodes
 	var time = Time.get_ticks_msec()
 	subdivide_affected_region(root_octree, point, radius)
+	smooth_octree_transitions(root_octree)
 	subdivide_time += Time.get_ticks_msec() - time
 
-	#add normal calculations to not just do a region but specifically a region within the surface
-	
 	# Apply removal and regenerate mesh
-	regenerate_terrain()
+	regenerate_mesh()
 	display_debug_info()
-
-func display_debug_info():
-	print("Octree Time: ", octree_time)
-	print("Mesh Time: ", mesh_time)
-	print("Collider Time: ", collisider_time)
-	print("Subdivide Time: ", subdivide_time)
-	print("Total Time: ", total_time)
-	print("Click Amount: ", click_amount)
-
-	#average times
-	if click_amount == 0:
-		print("No clicks registered")
-		print("No average times to display yet.")
-	print("Average Octree Time: ", octree_time / click_amount)
-	print("Average Mesh Time: ", mesh_time / click_amount)
-	print("Average Collider Time: ", collisider_time / click_amount)
-	print("Average Subdivide Time: ", subdivide_time / click_amount)
-	print("Average Total Time: ", total_time / click_amount)
 
 func subdivide_affected_region(node: Octree, point: Vector3, radius: float):
 	# Check if this node intersects with the removal sphere
@@ -127,28 +71,20 @@ func subdivide_affected_region(node: Octree, point: Vector3, radius: float):
 		else:
 			# If we're at max depth or already subdivided, recalculate the value
 			node.value = boulder_density_function(node.center)
+			affect_count += 1
 			if not node.children.is_empty():
 				for child in node.children:
 					subdivide_affected_region(child, point, radius)
-	
-func regenerate_terrain():
-	root_octree = Octree.new(Vector3.ZERO, grid_size)
-	generate_adaptive_volume()
-	regenerate_mesh()
 
 func generate_terrain():
 	root_octree = Octree.new(Vector3.ZERO, grid_size)
 	generate_adaptive_volume()
 	regenerate_mesh()
 
-func generate_adaptive_volume(): #FIX HERE
-	var time = Time.get_ticks_msec()
+func generate_adaptive_volume():
 	subdivide_octree(root_octree, 0)
-	subdivide_time += Time.get_ticks_msec() - time
 
-	time = Time.get_ticks_msec()
 	smooth_octree_transitions(root_octree)
-	octree_time += Time.get_ticks_msec() - time
 
 func smooth_octree_transitions(node: Octree):
 	if node.children.is_empty():
@@ -178,6 +114,7 @@ func should_subdivide(node: Octree) -> bool:
 	return abs(node.value - iso_level) < node.size * 0.1
 
 func boulder_density_function(point: Vector3) -> float:
+	var time = Time.get_ticks_msec()
 	# Calculate distance from the center of the grid
 	var distance_from_center = point.length()
 	var max_distance = grid_size * 0.5
@@ -207,6 +144,7 @@ func boulder_density_function(point: Vector3) -> float:
 		if distance_to_remove_center <= operation.radius:
 			combined_density -= 1.0
 
+	density_time += Time.get_ticks_msec() - time
 	return combined_density
 
 func generate_mesh_and_collider(collider_enabled: bool):
@@ -261,20 +199,19 @@ func process_octree(node: Octree, st: SurfaceTool, collision_points: Array): #FI
 
 func generate_cube_mesh(node: Octree, st: SurfaceTool, collision_points: Array): 
 	var corners = node.get_cube_corners()
-	var corner_values = node.corner_values
+	var corner_values = []  # Initialize a fresh local array
 	for corner in corners:
 		corner_values.append(boulder_density_function(corner))   
-	
+
 	var cube_index = 0
 	for i in range(8):
 		if corner_values[i] < iso_level:
 			cube_index |= 1 << i
 	if cube_index == 0 or cube_index == 255:
 		return
-	
-	var edge_mask = cube_tables.EDGE_TABLE[cube_index]
+
 	var triangles = cube_tables.TRIANGLE_TABLE[cube_index]
-	
+
 	for i in range(0, triangles.size(), 3):
 		if triangles[i] == -1:
 			break
@@ -309,7 +246,7 @@ func get_cube_corners(node: Octree) -> Array:
 func _input(event):
 	if event is InputEventKey and event.pressed:
 		if event.keycode == KEY_0:
-			regenerate_terrain()
+			generate_terrain()
 		elif event.keycode == KEY_9:
 			reset_terrain()
 		elif event.keycode == KEY_8:
@@ -339,7 +276,7 @@ func get_edge_key(v1: Vector3, v2: Vector3) -> String:
 
 func reset_terrain():
 	mining_operations.clear()
-	regenerate_terrain()
+	generate_terrain()
 
 func create_new_terrain():
 	noise = FastNoiseLite.new()
@@ -350,3 +287,64 @@ func create_new_terrain():
 	cube_tables = MarchingCubesTables.new()
 	
 	generate_terrain()
+
+class Octree:
+	var center: Vector3
+	var size: float
+	var value: float
+	var children: Array[Octree]
+	var corner_values: Array[float]
+	var cube_tables: MarchingCubesTables
+	
+	func _init(center: Vector3, size: float):
+		self.center = center
+		self.size = size
+		self.value = 0.0
+		self.children = []
+		self.corner_values = []
+		self.cube_tables = MarchingCubesTables.new()
+
+	func subdivide():
+		if not children.is_empty():
+			return
+		
+		var half_size = size / 2.0
+		for x in [-1, 1]:
+			for y in [-1, 1]:
+				for z in [-1, 1]:
+					var offset = Vector3(x, y, z) * half_size * 0.5
+					var child_center = center + offset
+					children.append(Octree.new(child_center, half_size))
+	
+	func calculate_corner_values(density_func: Callable):
+		corner_values.clear()
+		var corners = get_cube_corners()
+		for corner in corners:
+			corner_values.append(density_func.call(corner))
+	
+	func get_cube_corners() -> Array:
+		var corners = []
+		for offset in cube_tables.EDGE_VERTEXT_OFFSETS:
+			corners.append(center + (offset - Vector3(0.5, 0.5, 0.5)) * size)
+		return corners
+
+func display_debug_info():
+	print("Octree Time: ", octree_time)
+	print("Mesh Time: ", mesh_time)
+	print("Collider Time: ", collisider_time)
+	print("Subdivide Time: ", subdivide_time)
+	print("Density Time: ", density_time)
+	print("Total Time: ", total_time)
+	print("Click Amount: ", click_amount)
+
+	#average times
+	if click_amount == 0:
+		print("No clicks registered")
+		print("No average times to display yet.")
+	print("Average Octree Time: ", octree_time / click_amount)
+	print("Average Mesh Time: ", mesh_time / click_amount)
+	print("Average Collider Time: ", collisider_time / click_amount)
+	print("Average Subdivide Time: ", subdivide_time / click_amount)
+	print("Average Density Time: ", density_time / click_amount)
+	print("Average Total Time: ", total_time / click_amount)
+	print("Affected Nodes: ", affect_count)
