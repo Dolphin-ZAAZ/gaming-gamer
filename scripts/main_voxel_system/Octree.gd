@@ -70,22 +70,51 @@ var voxel_space_origin : Vector3 = Vector3.ZERO
 
 var noise: FastNoiseLite
 
+var octree_time: float = 0.0
+var mesh_time: float = 0.0
+var collisider_time: float = 0.0
+var subdivide_time: float = 0.0
+var total_time: float = 0.0
+var click_amount: int = 0
+
 func _ready():
 	create_new_terrain()
 
 func mine(point: Vector3, radius: float):
+	click_amount += 1
 	mining_operations.append({"point": point, "radius": radius})
 	
 	remove_region_center = point
 	remove_region_radius = radius
 	
 	# Subdivide affected octree nodes
+	var time = Time.get_ticks_msec()
 	subdivide_affected_region(root_octree, point, radius)
+	subdivide_time += Time.get_ticks_msec() - time
 
-	#add normal calculationc to not just do a region but specifically a regoin within the surface
+	#add normal calculations to not just do a region but specifically a region within the surface
 	
 	# Apply removal and regenerate mesh
-	generate_terrain()
+	regenerate_terrain()
+	display_debug_info()
+
+func display_debug_info():
+	print("Octree Time: ", octree_time)
+	print("Mesh Time: ", mesh_time)
+	print("Collider Time: ", collisider_time)
+	print("Subdivide Time: ", subdivide_time)
+	print("Total Time: ", total_time)
+	print("Click Amount: ", click_amount)
+
+	#average times
+	if click_amount == 0:
+		print("No clicks registered")
+		print("No average times to display yet.")
+	print("Average Octree Time: ", octree_time / click_amount)
+	print("Average Mesh Time: ", mesh_time / click_amount)
+	print("Average Collider Time: ", collisider_time / click_amount)
+	print("Average Subdivide Time: ", subdivide_time / click_amount)
+	print("Average Total Time: ", total_time / click_amount)
 
 func subdivide_affected_region(node: Octree, point: Vector3, radius: float):
 	# Check if this node intersects with the removal sphere
@@ -112,9 +141,14 @@ func generate_terrain():
 	generate_adaptive_volume()
 	regenerate_mesh()
 
-func generate_adaptive_volume():
+func generate_adaptive_volume(): #FIX HERE
+	var time = Time.get_ticks_msec()
 	subdivide_octree(root_octree, 0)
+	subdivide_time += Time.get_ticks_msec() - time
+
+	time = Time.get_ticks_msec()
 	smooth_octree_transitions(root_octree)
+	octree_time += Time.get_ticks_msec() - time
 
 func smooth_octree_transitions(node: Octree):
 	if node.children.is_empty():
@@ -142,7 +176,6 @@ func subdivide_octree(node: Octree, depth: int):
 
 func should_subdivide(node: Octree) -> bool:
 	return abs(node.value - iso_level) < node.size * 0.1
-
 
 func boulder_density_function(point: Vector3) -> float:
 	# Calculate distance from the center of the grid
@@ -177,14 +210,19 @@ func boulder_density_function(point: Vector3) -> float:
 	return combined_density
 
 func generate_mesh_and_collider(collider_enabled: bool):
+	var time = Time.get_ticks_msec()
 	vertex_map.clear()
 	var st = SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	mesh_time += Time.get_ticks_msec() - time
 	
 	var collision_points = []
 	
+	time = Time.get_ticks_msec()
 	process_octree(root_octree, st, collision_points)
-	
+	octree_time += Time.get_ticks_msec() - time
+
+	time = Time.get_ticks_msec()
 	st.generate_normals()
 	st.index()
 	var mesh = st.commit()
@@ -195,7 +233,9 @@ func generate_mesh_and_collider(collider_enabled: bool):
 	add_child(mesh_instance)
 
 	mesh_instance.position = Vector3(0, 0, 0)
+	mesh_time += Time.get_ticks_msec() - time
 
+	time = Time.get_ticks_msec()
 	if collider_enabled:
 		var collision_shape = CollisionShape3D.new()
 		var concave_polygon_shape = ConcavePolygonShape3D.new()
@@ -206,20 +246,20 @@ func generate_mesh_and_collider(collider_enabled: bool):
 		static_body.add_child(collision_shape)
 		add_child(static_body)
 		static_body.position = mesh_instance.position
-
+	collisider_time += Time.get_ticks_msec() - time
 func create_double_sided_material() -> StandardMaterial3D:
 	var material = StandardMaterial3D.new()
 	material.cull_mode = StandardMaterial3D.CULL_DISABLED
 	return material
 
-func process_octree(node: Octree, st: SurfaceTool, collision_points: Array):
+func process_octree(node: Octree, st: SurfaceTool, collision_points: Array): #FIX HERE
 	if node.children.is_empty():
 		generate_cube_mesh(node, st, collision_points)
 	else:
 		for child in node.children:
 			process_octree(child, st, collision_points)
 
-func generate_cube_mesh(node: Octree, st: SurfaceTool, collision_points: Array):
+func generate_cube_mesh(node: Octree, st: SurfaceTool, collision_points: Array): 
 	var corners = node.get_cube_corners()
 	var corner_values = node.corner_values
 	for corner in corners:
