@@ -8,7 +8,6 @@ var root_octree: Octree
 @export var collision_enabled: bool = true
 @export var iso_level: float = 0.5
 @export var grid_size: float = 10000.0
-@export var max_depth: int = 6
 @export var noise_scale: float = 0.1
 @export var noise_frequency: float = 0.1
 @export var noise_octaves: int = 4
@@ -70,7 +69,8 @@ func subdivide_affected_region(node: Octree, point: Vector3, radius: float):
 				subdivide_affected_region(child, point, radius)
 		else:
 			# If we're at max depth or already subdivided, recalculate the value
-			node.value = boulder_density_function(node.center)
+			node.value -= 1.0
+			node.corner_values.clear()
 			affect_count += 1
 			if not node.children.is_empty():
 				for child in node.children:
@@ -100,20 +100,19 @@ func smooth_octree_transitions(node: Octree):
 		smooth_octree_transitions(child)
 
 func subdivide_octree(node: Octree, depth: int):
-	if depth >= max_depth:
-		return
-	
-	node.value = boulder_density_function(node.center)
-	
-	if should_subdivide(node):
-		node.subdivide()
-		for child in node.children:
-			subdivide_octree(child, depth + 1)
+	if node.size > min_voxel_size.x:
+		node.value = boulder_density_function(node.center)
+		
+		if should_subdivide(node):
+			node.subdivide()
+			for child in node.children:
+				subdivide_octree(child, depth + 1)
 
 func should_subdivide(node: Octree) -> bool:
 	return abs(node.value - iso_level) < node.size * 0.1
 
 func boulder_density_function(point: Vector3) -> float:
+
 	var time = Time.get_ticks_msec()
 	# Calculate distance from the center of the grid
 	var distance_from_center = point.length()
@@ -200,8 +199,19 @@ func process_octree(node: Octree, st: SurfaceTool, collision_points: Array): #FI
 func generate_cube_mesh(node: Octree, st: SurfaceTool, collision_points: Array): 
 	var corners = node.get_cube_corners()
 	var corner_values = []  # Initialize a fresh local array
+	
 	for corner in corners:
-		corner_values.append(boulder_density_function(corner))   
+		if node.corner_values.is_empty():
+			corner_values.append(boulder_density_function(corner))
+		else:
+			corner_values = node.corner_values
+	
+	if node.corner_values.is_empty():
+		# Assign values individually to maintain type safety
+		for value in corner_values:
+			node.corner_values.append(value)
+	else:
+		corner_values = node.corner_values
 
 	var cube_index = 0
 	for i in range(8):
@@ -329,6 +339,7 @@ class Octree:
 		return corners
 
 func display_debug_info():
+	total_time = octree_time + mesh_time + collisider_time + subdivide_time + density_time
 	print("Octree Time: ", octree_time)
 	print("Mesh Time: ", mesh_time)
 	print("Collider Time: ", collisider_time)

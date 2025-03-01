@@ -51,5 +51,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -344.615, 77.3783, -0.0390997
 
 [node name="AdaptiveMarchingCubes" type="Node3D" parent="." groups=["terrain"]]
 script = ExtResource("3_4mikp")
-grid_size = 512.0
+grid_size = 256.0
 min_voxel_size = Vector3(4, 4, 4)
