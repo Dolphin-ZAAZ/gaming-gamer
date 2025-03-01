@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://dovjkpj2x2xxq" path="res://scenes/box.tscn" id="2_fjo0c"]
 [ext_resource type="PackedScene" uid="uid://ew2rsis27pi7" path="res://scenes/player.tscn" id="2_k0p0j"]
-[ext_resource type="Script" path="res://scripts/rethink_voxel/Octree.gd" id="3_4mikp"]
+[ext_resource type="Script" path="res://scripts/old_rethink/Octree.gd" id="3_4mikp"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ykne6"]
 sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)

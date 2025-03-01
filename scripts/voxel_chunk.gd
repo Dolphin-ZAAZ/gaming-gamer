@@ -1,6 +1,6 @@
 extends Node3D
 
-class_name VoxelChunk
+class_name OLDVoxelChunk
 
 const CHUNK_SIZE = 16
 const NOISE_SCALE = 0.1

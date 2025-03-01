@@ -1,0 +1,152 @@
+[gd_scene load_steps=11 format=3 uid="uid://b4cxq73q1iyoe"]
+
+[ext_resource type="Script" path="res://scripts/rethink_voxel/TerrainEditor.gd" id="1_a8f64"]
+[ext_resource type="Script" path="res://scripts/rethink_voxel/VoxelManager.gd" id="2_vxqdi"]
+[ext_resource type="Script" path="res://scripts/rethink_voxel/ChunkedMarchingCubes.gd" id="3_iw6m3"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_tvcus"]
+sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+
+[sub_resource type="Sky" id="Sky_tfjd5"]
+sky_material = SubResource("ProceduralSkyMaterial_tvcus")
+
+[sub_resource type="Environment" id="Environment_xhrjf"]
+background_mode = 2
+sky = SubResource("Sky_tfjd5")
+tonemap_mode = 2
+glow_enabled = true
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mopj4"]
+transparency = 1
+albedo_color = Color(1, 0.333333, 0.333333, 0.301961)
+
+[sub_resource type="SphereMesh" id="SphereMesh_1y1c3"]
+material = SubResource("StandardMaterial3D_mopj4")
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ks0m1"]
+bg_color = Color(0.12549, 0.152941, 0.2, 0.752941)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="Theme" id="Theme_g5l0x"]
+Panel/styles/panel = SubResource("StyleBoxFlat_ks0m1")
+
+[node name="TerrainEditor" type="Node3D"]
+script = ExtResource("1_a8f64")
+radius_slider_path = NodePath("UI/VBoxContainer/Radius/RadiusSlider")
+strength_slider_path = NodePath("UI/VBoxContainer/Strength/StrengthSlider")
+mode_button_path = NodePath("UI/VBoxContainer/ModeButton")
+stats_label_path = NodePath("UI/VBoxContainer/StatsLabel")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_xhrjf")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.866023, -0.433016, 0.25, 0, 0.5, 0.866025, -0.500003, 0.75, -0.433013, 0, 5, 0)
+shadow_enabled = true
+
+[node name="VoxelManager" type="Node3D" parent="."]
+script = ExtResource("2_vxqdi")
+
+[node name="ChunkedMarchingCubes" type="Node3D" parent="VoxelManager"]
+script = ExtResource("3_iw6m3")
+chunk_size = 8
+voxel_size = 0.5
+max_chunks_per_frame = 2
+multithreaded = true
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 20)
+current = true
+fov = 75.0
+
+[node name="RayCast3D" type="RayCast3D" parent="."]
+target_position = Vector3(0, 0, -100)
+collision_mask = 3
+
+[node name="EditCursor" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_1y1c3")
+
+[node name="UI" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UI"]
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_right = 278.0
+grow_vertical = 2
+mouse_filter = 2
+theme = SubResource("Theme_g5l0x")
+
+[node name="StatsLabel" type="Label" parent="UI/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "FPS: 60.0
+Chunks: 125
+Active: 27
+Radius: 3.0
+Strength: 1.0
+Mode: Remove"
+
+[node name="Radius" type="HBoxContainer" parent="UI/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="UI/VBoxContainer/Radius"]
+layout_mode = 2
+text = "Radius:"
+
+[node name="RadiusSlider" type="HSlider" parent="UI/VBoxContainer/Radius"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 0.5
+max_value = 10.0
+step = 0.1
+value = 3.0
+
+[node name="Strength" type="HBoxContainer" parent="UI/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="UI/VBoxContainer/Strength"]
+layout_mode = 2
+text = "Strength:"
+
+[node name="StrengthSlider" type="HSlider" parent="UI/VBoxContainer/Strength"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 0.1
+max_value = 5.0
+step = 0.1
+value = 1.0
+
+[node name="ModeButton" type="Button" parent="UI/VBoxContainer"]
+layout_mode = 2
+text = "Mode: Remove"
+
+[node name="Instructions" type="Label" parent="UI/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Controls:
+LMB - Edit terrain
+RMB - Rotate camera
+WASD - Move camera
+QE - Up/Down
+Space - Toggle add/remove
+Tab - Toggle wireframe
+Esc - Free mouse"
+
+[node name="StartupTimer" type="Timer" parent="."]
+wait_time = 0.5
+one_shot = true
+autostart = true

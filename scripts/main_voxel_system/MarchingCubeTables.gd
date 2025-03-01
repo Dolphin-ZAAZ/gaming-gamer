@@ -296,12 +296,12 @@ const TRIANGLE_TABLE: Array = [
 	[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 ]
 ]
 
-var EDGE_VERTEXT_OFFSETS = [
+const EDGE_VERTEXT_OFFSETS = [
 	Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 1), Vector3(0, 0, 1),
 	Vector3(0, 1, 0), Vector3(1, 1, 0), Vector3(1, 1, 1), Vector3(0, 1, 1)
 ]
 
-var EDGE_CONNECTIONS: PackedInt32Array = [
+const EDGE_CONNECTIONS: PackedInt32Array = [
 	0, 1, 1, 2, 2, 3, 3, 0,  # edges from bottom square vertices
 	4, 5, 5, 6, 6, 7, 7, 4,  # edges from top square vertices
 	0, 4, 1, 5, 2, 6, 3, 7   # vertical edges connecting the squares
