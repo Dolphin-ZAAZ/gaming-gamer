@@ -21,6 +21,7 @@ var root_octree: Octree
 @export var remove_region_center: Vector3 
 @export var remove_region_radius: float
 
+@export var max_voxel_size : Vector3 = Vector3(16,16,16)
 @export var min_voxel_size : Vector3 = Vector3(1, 1, 1)
 
 var mining_operations: Array = []
@@ -100,7 +101,7 @@ func smooth_octree_transitions(node: Octree):
 		smooth_octree_transitions(child)
 
 func subdivide_octree(node: Octree, depth: int):
-	if node.size > min_voxel_size.x:
+	if node.size > max_voxel_size.x:
 		node.value = boulder_density_function(node.center)
 		
 		if should_subdivide(node):
@@ -112,10 +113,22 @@ func should_subdivide(node: Octree) -> bool:
 	return abs(node.value - iso_level) < node.size * 0.1
 
 func boulder_density_function(point: Vector3) -> float:
-
 	var time = Time.get_ticks_msec()
-	# Calculate distance from the center of the grid
-	var distance_from_center = point.length()
+	
+	# Calculate distance from center using rounded cube formula
+	var x = abs(point.x)
+	var y = abs(point.y)
+	var z = abs(point.z)
+	
+	# Rounded cube SDF (Signed Distance Function)
+	var max_component = max(x, max(y, z))
+	var cube_distance = max_component
+	var sphere_distance = point.length() 
+	
+	# Blend between cube and sphere (adjust blend_factor to control roundness)
+	var blend_factor = 0.2 # Lower for sharper edges, higher for more rounded
+	var distance_from_center = lerp(cube_distance, sphere_distance, blend_factor)
+	
 	var max_distance = grid_size * 0.5
 	
 	# Create a smooth falloff towards the edges

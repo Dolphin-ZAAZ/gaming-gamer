@@ -1,7 +1,7 @@
 extends CharacterBody3D
 
-var SPEED = 50.0
-var JUMP_VELOCITY = 30.0
+var SPEED = 8.0
+var JUMP_VELOCITY = 12.0
 
 var voxel_mesh: SmoothVoxelMesh
 var voxel_data: SmoothVoxelData
@@ -64,5 +64,5 @@ func mine_at_position(screen_position: Vector2):
 	
 	if result:
 		var hit_point = result.position
-		voxel_chunk.mine(hit_point, 15.0)
+		voxel_chunk.mine(hit_point, 4.0)
 	
